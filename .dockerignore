@@ -40,9 +40,12 @@ Thumbs.db
 .gitignore
 
 # Project-specific tooling (not needed at runtime)
+.codex
+.codex/
 .dual-graph/
 .dual-graph-context/
 .claude/
+CODEX.md
 scripts/create-sa.sh
 
 # Tests / coverage
