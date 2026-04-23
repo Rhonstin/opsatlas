@@ -1,0 +1,49 @@
+.discoverRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.hint { color: var(--muted); font-size: 13px; }
+
+.list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: 260px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.item:last-child { border-bottom: none; }
+.item:hover { background: var(--bg); }
+
+.item input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.itemInfo { display: flex; flex-direction: column; gap: 2px; }
+.itemName { font-size: 13px; font-weight: 500; }
+.itemId { font-size: 11px; color: var(--muted); font-family: monospace; }
+
+.manualRow { display: flex; gap: 8px; align-items: center; }
+.manualRow input { flex: 1; }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+.count { font-size: 13px; color: var(--muted); }

@@ -1,0 +1,312 @@
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+/* ── Tab bar ───────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 28px;
+}
+
+.tab, .tabActive {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  color: var(--muted);
+  border-radius: 0;
+}
+
+.tab:hover { color: var(--text); }
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tabContent { }
+
+/* ── Section headers ───────────────────────────────────────────── */
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.sectionDesc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.inlineLink {
+  color: var(--accent);
+  text-decoration: none;
+}
+.inlineLink:hover { text-decoration: underline; }
+
+/* ── Cards ─────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cardDesc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.warning { color: #f59e0b; }
+
+/* ── SSO ───────────────────────────────────────────────────────── */
+
+.ssoDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ssoLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  display: inline-block;
+  width: 90px;
+}
+
+.ssoValue {
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.envBlock {
+  margin-top: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.envVar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.envKey {
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.envVal {
+  color: var(--muted);
+}
+
+.ssoInstructions {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ssoInstructions strong {
+  color: var(--text);
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.ssoInstructions ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.ssoInstructions li {
+  margin-bottom: 6px;
+}
+
+.ssoInstructions code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+/* ── Import/Export ─────────────────────────────────────────────── */
+
+.error {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #ef4444;
+}
+
+.resultBox {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.resultSummary {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.created { color: #22c55e; }
+.skipped { color: var(--muted); }
+
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resultRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dotCreated { background: #22c55e; }
+.dotSkipped { background: var(--muted); }
+
+.resultType {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.resultName {
+  font-weight: 500;
+  flex: 1;
+}
+
+.resultStatus {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── SSO Form ──────────────────────────────────────────────────────────────── */
+
+.ssoForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.ssoField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ssoFieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.ssoInput {
+  width: 100%;
+  max-width: 480px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: monospace;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.ssoInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ssoSecretMasked {
+  font-family: monospace;
+  font-size: 14px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+
+/* ── Sub / legacy ───────────────────────────────────────────────── */
+
+.sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 28px;
+}

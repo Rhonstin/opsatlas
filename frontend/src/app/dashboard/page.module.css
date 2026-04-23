@@ -1,0 +1,121 @@
+.heading { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.sub { color: var(--muted); margin-bottom: 28px; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.cardTitle { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.cardValue { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+.cardNote { font-size: 12px; color: var(--muted); }
+
+.section {
+  margin-top: 36px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.breakdown {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.breakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  gap: 16px;
+}
+.breakdownRow:last-child { border-bottom: none; }
+.breakdownRow:hover { background: rgba(255,255,255,0.035); cursor: pointer; }
+
+.breakdownLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.breakdownRank {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.breakdownName {
+  font-weight: 500;
+  display: inline;
+}
+
+.breakdownId {
+  display: block;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.breakdownMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.breakdownCosts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.breakdownCost {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.breakdownToDate {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.noActuals {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.breakdownTotal {
+  background: rgba(255,255,255,0.02);
+  font-weight: 600;
+}
+
+.periodBadge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: monospace;
+}

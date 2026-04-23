@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs (rebuilt inside container)
+dist/
+.next/
+out/
+
+# Dev / local config
+.env
+.env.*
+!.env.example
+
+# GCP service account keys — never bake into image
+*-key.json
+*.json.key
+
+# Source maps (optional — remove if you want them in prod)
+**/*.map
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# OS / IDE noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git / CI
+.git/
+.github/
+.gitignore
+
+# Project-specific tooling (not needed at runtime)
+.dual-graph/
+.dual-graph-context/
+.claude/
+scripts/create-sa.sh
+
+# Tests / coverage
+coverage/
+**/*.test.ts
+**/*.spec.ts
+.dual-graph
+CLAUDE.md 

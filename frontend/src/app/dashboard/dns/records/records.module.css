@@ -1,0 +1,153 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+.heading { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; }
+
+/* Tab strip shared between Connections and Records pages */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.tab {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tabActive {
+  color: var(--text);
+  border-bottom-color: var(--accent, #4f8ef7);
+}
+
+/* Zone filter pills */
+.filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.pill:hover { color: var(--text); }
+.pillActive {
+  background: var(--accent, #4f8ef7);
+  border-color: var(--accent, #4f8ef7);
+  color: #fff;
+}
+
+/* Records table */
+.zoneSection { margin-bottom: 24px; }
+
+.zoneLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+
+.table {
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 2.5fr) 70px minmax(0, 160px) 60px 70px minmax(0, 1.5fr);
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  align-items: center;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.5fr) 70px minmax(0, 160px) 60px 70px minmax(0, 1.5fr);
+  padding: 8px 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  transition: background 0.1s;
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: rgba(255,255,255,0.04); }
+
+.recordName {
+  font-weight: 500;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typeBadge {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+.value {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ttl {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.proxied {
+  font-size: 11px;
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.instanceLink {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent, #4f8ef7);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  max-width: 100%;
+}
+.instanceLink:hover { text-decoration: underline; }
+.noInstance { font-size: 12px; color: var(--muted); }
+
+.empty { color: var(--muted); padding: 48px; text-align: center; }
