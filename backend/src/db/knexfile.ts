@@ -1,5 +1,8 @@
 import 'dotenv/config';
+import path from 'path';
 import type { Knex } from 'knex';
+
+const isTypeScript = __filename.endsWith('.ts');
 
 const config: Knex.Config = {
   client: 'pg',
@@ -11,8 +14,8 @@ const config: Knex.Config = {
     password: process.env.DB_PASSWORD || 'postgres',
   },
   migrations: {
-    directory: './migrations',
-    extension: 'ts',
+    directory: path.join(__dirname, 'migrations'),
+    extension: isTypeScript ? 'ts' : 'js',
   },
 };
 

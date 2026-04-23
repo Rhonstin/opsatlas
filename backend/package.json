@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "knex migrate:latest --knexfile src/db/knexfile.ts",
+    "migrate:prod": "knex migrate:latest --knexfile dist/db/knexfile.js",
     "migrate:rollback": "knex migrate:rollback --knexfile src/db/knexfile.ts",
     "migrate:make": "knex migrate:make --knexfile src/db/knexfile.ts"
   },

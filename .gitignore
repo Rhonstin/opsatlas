@@ -44,9 +44,12 @@ coverage/
 # Misc
 .vercel
 .turbo
+.codex
+.codex/
 .dual-graph/
 .dual-graph-context/
 .claude/
 
 # Claude Code project instructions (local only)
 CLAUDE.md
+CODEX.md

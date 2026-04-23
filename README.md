@@ -41,26 +41,71 @@
 
 ## Quick start
 
-### Docker (recommended)
+### One-line install
 
 ```bash
-git clone https://github.com/your-username/opsatlas
+curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | bash
+```
+
+Override defaults on the `bash` side of the pipeline:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | INSTALL_DIR=/opt/opsatlas bash
+```
+
+### Docker images (recommended)
+
+```bash
+git clone https://github.com/Rhonstin/opsatlas
 cd opsatlas
 
-cp backend/.env.example backend/.env
-# Edit backend/.env — set JWT_SECRET and ENCRYPTION_KEY
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 16)
+FRONTEND_URL=http://localhost:3000
+API_URL=http://localhost:4000
+EOF
 
+docker compose pull
 docker compose up -d
-docker compose exec backend npm run migrate
+docker compose exec -T backend npm run migrate:prod
 ```
 
 Open http://localhost:3000
+
+The default `docker-compose.yml` uses published GitHub Container Registry images:
+
+| Service | Image |
+|---|---|
+| Backend | `ghcr.io/rhonstin/opsatlas/backend:main` |
+| Frontend | `ghcr.io/rhonstin/opsatlas/frontend:main` |
+
+Images are built by `.github/workflows/containers.yml` on pull requests, pushes to `main`, and `v*` tags. Pull requests build only; `main` and tag builds publish to GHCR.
+
+### Local Docker builds
+
+Use `compose.dev.yml` when you want Docker Compose to build images from the local source tree:
+
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env if you are running backend outside Compose
+
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 16)
+FRONTEND_URL=http://localhost:3000
+API_URL=http://localhost:4000
+EOF
+
+docker compose -f compose.dev.yml up -d --build
+docker compose -f compose.dev.yml exec -T backend npm run migrate:prod
+```
 
 ### Local development
 
 ```bash
 # 1. Postgres
-docker compose up -d postgres
+docker compose -f compose.dev.yml up -d postgres
 
 # 2. Backend
 cd backend
@@ -79,7 +124,22 @@ npm run dev                 # :3000
 
 ## Environment variables
 
-### Backend (`backend/.env`)
+### Docker Compose (`.env`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET` | Yes | Long random string for signing JWTs |
+| `ENCRYPTION_KEY` | Yes | Exactly 32 chars — encrypts cloud credentials at rest |
+| `FRONTEND_URL` | No | CORS origin (default: `http://localhost:3000`) |
+| `API_URL` | No | Frontend build-time backend URL for local Docker builds |
+
+```bash
+# Generate secrets
+openssl rand -hex 32   # JWT_SECRET
+openssl rand -hex 16   # ENCRYPTION_KEY (32 hex chars)
+```
+
+### Backend (`backend/.env`, local development)
 
 | Variable | Required | Description |
 |---|---|---|
@@ -88,12 +148,6 @@ npm run dev                 # :3000
 | `ENCRYPTION_KEY` | Yes | Exactly 32 chars — encrypts cloud credentials at rest |
 | `PORT` | No | API port (default: `4000`) |
 | `FRONTEND_URL` | No | CORS origin (default: `http://localhost:3000`) |
-
-```bash
-# Generate secrets
-openssl rand -hex 32   # JWT_SECRET
-openssl rand -hex 16   # ENCRYPTION_KEY (32 hex chars)
-```
 
 Authentik SSO credentials (`AUTHENTIK_URL`, `AUTHENTIK_CLIENT_ID`, `AUTHENTIK_CLIENT_SECRET`) can be set as env vars **or** entered directly in Settings → SSO.
 
