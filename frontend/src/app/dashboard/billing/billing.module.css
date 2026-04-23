@@ -271,17 +271,38 @@
   gap: 8px;
 }
 
-.setupHint {
-  background: rgba(79, 142, 247, 0.06);
+.setupHints {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   border: 1px solid rgba(79, 142, 247, 0.2);
   border-radius: 8px;
-  padding: 14px 18px;
-  font-size: 13px;
-  line-height: 1.6;
+  overflow: hidden;
   margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.setupHint code {
+.setupHintRow {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 16px;
+  background: rgba(79, 142, 247, 0.04);
+  border-bottom: 1px solid rgba(79, 142, 247, 0.1);
+}
+.setupHintRow:last-child { border-bottom: none; }
+
+.setupHintProvider {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(79, 142, 247, 0.85);
+  text-transform: uppercase;
+}
+
+.setupHints code {
   font-family: monospace;
   background: rgba(255,255,255,0.06);
   padding: 1px 5px;

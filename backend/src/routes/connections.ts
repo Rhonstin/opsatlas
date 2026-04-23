@@ -9,6 +9,24 @@ import { AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+/** Returns an error string if the credential shape is wrong, or null if valid. */
+function validateCredentialShape(provider: string, creds: unknown): string | null {
+  if (typeof creds !== 'object' || creds === null) return 'credentials must be an object';
+  const c = creds as Record<string, unknown>;
+  if (provider === 'gcp') {
+    if (typeof c.type !== 'string' || !c.type) return 'GCP credentials must include a "type" field';
+    if (typeof c.project_id !== 'string' || !c.project_id) return 'GCP credentials must include a "project_id" field';
+    if (typeof c.private_key !== 'string' || !c.private_key) return 'GCP credentials must include a "private_key" field';
+    if (typeof c.client_email !== 'string' || !c.client_email) return 'GCP credentials must include a "client_email" field';
+  } else if (provider === 'aws') {
+    if (typeof c.access_key_id !== 'string' || !c.access_key_id) return 'AWS credentials must include an "access_key_id" field';
+    if (typeof c.secret_access_key !== 'string' || !c.secret_access_key) return 'AWS credentials must include a "secret_access_key" field';
+  } else if (provider === 'hetzner') {
+    if (typeof c.token !== 'string' || !c.token) return 'Hetzner credentials must include a "token" field';
+  }
+  return null;
+}
+
 router.get('/', async (req: AuthRequest, res: Response) => {
   const connections = await db('cloud_connections')
     .where({ user_id: req.userId })
@@ -57,6 +75,15 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
   if (!['gcp', 'aws', 'hetzner'].includes(provider)) {
     res.status(400).json({ error: 'provider must be gcp, aws, or hetzner' });
+    return;
+  }
+  if (name.length > 128) {
+    res.status(400).json({ error: 'name must be 128 characters or fewer' });
+    return;
+  }
+  const credError = validateCredentialShape(provider, credentials);
+  if (credError) {
+    res.status(400).json({ error: credError });
     return;
   }
 

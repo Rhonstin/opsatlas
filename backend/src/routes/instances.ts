@@ -15,6 +15,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
   let query = db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
+    .leftJoin('favorite_instances', function () {
+      this.on('favorite_instances.instance_id', 'instances.id')
+        .andOn('favorite_instances.user_id', db.raw('?', [req.userId as string]));
+    })
     .where('cloud_connections.user_id', req.userId)
     .select(
       'instances.id',
@@ -36,13 +40,43 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       'instances.estimated_monthly_cost',
       'instances.project_or_account_id',
       'instances.created_at',
+      db.raw('(favorite_instances.id IS NOT NULL) as is_favorited'),
     )
     .orderBy('instances.name');
 
-  if (provider) query = query.where('instances.provider', provider as string);
-  if (status) query = query.where('instances.status', status as string);
-  if (connection_id) query = query.where('instances.connection_id', connection_id as string);
-  if (resource_type) query = query.where('instances.resource_type', resource_type as string);
+  const VALID_PROVIDERS = ['gcp', 'aws', 'hetzner'];
+  const VALID_STATUSES = ['RUNNING', 'STOPPED', 'TERMINATED', 'STAGING', 'PROVISIONING', 'REPAIRING', 'SUSPENDED'];
+  const VALID_RESOURCE_TYPES = ['compute', 'cloudsql'];
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (provider) {
+    if (!VALID_PROVIDERS.includes(provider as string)) {
+      res.status(400).json({ error: 'Invalid provider' });
+      return;
+    }
+    query = query.where('instances.provider', provider as string);
+  }
+  if (status) {
+    if (!VALID_STATUSES.includes(status as string)) {
+      res.status(400).json({ error: 'Invalid status' });
+      return;
+    }
+    query = query.where('instances.status', status as string);
+  }
+  if (connection_id) {
+    if (!UUID_RE.test(connection_id as string)) {
+      res.status(400).json({ error: 'Invalid connection_id' });
+      return;
+    }
+    query = query.where('instances.connection_id', connection_id as string);
+  }
+  if (resource_type) {
+    if (!VALID_RESOURCE_TYPES.includes(resource_type as string)) {
+      res.status(400).json({ error: 'Invalid resource_type' });
+      return;
+    }
+    query = query.where('instances.resource_type', resource_type as string);
+  }
 
   const rows = await query;
 

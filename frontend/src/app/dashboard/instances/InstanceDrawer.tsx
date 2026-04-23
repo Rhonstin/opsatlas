@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api, InstanceDetail } from '@/lib/api';
 import styles from './instances.module.css';
 
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<string, string> = {
@@ -61,12 +62,35 @@ function calcCostToDate(inst: InstanceDetail): number {
 export default function InstanceDrawer({
   instanceId,
   onClose,
+  onFavoriteToggle,
 }: {
   instanceId: string;
   onClose: () => void;
+  onFavoriteToggle?: (id: string, isFav: boolean) => void;
 }) {
   const [inst, setInst] = useState<InstanceDetail | null>(null);
   const [error, setError] = useState('');
+  const [togglingFav, setTogglingFav] = useState(false);
+
+  async function toggleFavorite() {
+    if (!inst || togglingFav) return;
+    setTogglingFav(true);
+    const next = !inst.is_favorited;
+    setInst((prev) => prev ? { ...prev, is_favorited: next } : prev);
+    onFavoriteToggle?.(inst.id, next);
+    try {
+      if (inst.is_favorited) {
+        await api.removeFavorite(inst.id);
+      } else {
+        await api.addFavorite(inst.id);
+      }
+    } catch {
+      setInst((prev) => prev ? { ...prev, is_favorited: inst.is_favorited } : prev);
+      onFavoriteToggle?.(inst.id, inst.is_favorited);
+    } finally {
+      setTogglingFav(false);
+    }
+  }
 
   // Lock body scroll while drawer is open
   useEffect(() => {
@@ -107,7 +131,20 @@ export default function InstanceDrawer({
               </div>
             )}
           </div>
-          <button className={styles.drawerCloseBtn} onClick={onClose} aria-label="Close">×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {inst && (
+              <button
+                className={`${styles.starBtn} ${inst.is_favorited ? styles.starBtnActive : ''}`}
+                onClick={toggleFavorite}
+                title={inst.is_favorited ? 'Remove from starred' : 'Star this instance'}
+                aria-label={inst.is_favorited ? 'Unstar' : 'Star'}
+                style={{ fontSize: 18 }}
+              >
+                {inst.is_favorited ? '★' : '☆'}
+              </button>
+            )}
+            <button className={styles.drawerCloseBtn} onClick={onClose} aria-label="Close">×</button>
+          </div>
         </div>
 
         <div className={styles.drawerBody}>

@@ -6,7 +6,7 @@
  */
 import { Router, Response } from 'express';
 import db from '../db';
-import { encrypt, decrypt } from '../lib/crypto';
+import { encrypt } from '../lib/crypto';
 import { AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -14,15 +14,15 @@ const router = Router();
 export interface ConfigExport {
   version: number;
   exported_at: string;
+  // Credentials are intentionally absent from exports for security.
+  // Re-enter credentials after importing.
   cloud_connections: Array<{
     provider: string;
     name: string;
-    credentials: unknown;
   }>;
   dns_connections: Array<{
     provider: string;
     name: string;
-    credentials: unknown;
   }>;
   auto_update_policies: Array<{
     name: string;
@@ -47,15 +47,15 @@ router.get('/export', async (req: AuthRequest, res: Response) => {
   const payload: ConfigExport = {
     version: 1,
     exported_at: new Date().toISOString(),
+    // Credentials are intentionally excluded from the export.
+    // Re-enter them after importing to avoid transmitting secrets in backup files.
     cloud_connections: cloudConns.map((c) => ({
       provider: c.provider,
       name: c.name,
-      credentials: JSON.parse(decrypt(c.credentials_enc)) as unknown,
     })),
     dns_connections: dnsConns.map((c) => ({
       provider: c.provider,
       name: c.name,
-      credentials: JSON.parse(decrypt(c.credentials_enc)) as unknown,
     })),
     auto_update_policies: policies.map((p) => ({
       name: p.name,
@@ -95,7 +95,7 @@ router.post('/import', async (req: AuthRequest, res: Response) => {
   const existingDnsSet = new Set(existingDns.map((c: { provider: string; name: string }) => cloudKey(c.provider, c.name)));
   const existingPolicySet = new Set(existingPolicies.map((p: { name: string }) => p.name));
 
-  // Import cloud connections
+  // Import cloud connections (credentials excluded from export — mark as pending, require re-entry)
   for (const conn of body.cloud_connections ?? []) {
     const key = cloudKey(conn.provider, conn.name);
     if (existingCloudSet.has(key)) {
@@ -107,7 +107,7 @@ router.post('/import', async (req: AuthRequest, res: Response) => {
         user_id: req.userId,
         provider: conn.provider,
         name: conn.name,
-        credentials_enc: encrypt(JSON.stringify(conn.credentials)),
+        credentials_enc: encrypt(JSON.stringify({})),
         status: 'pending',
       });
       results.push({ type: 'cloud_connection', name: conn.name, status: 'created' });
@@ -128,7 +128,7 @@ router.post('/import', async (req: AuthRequest, res: Response) => {
         user_id: req.userId,
         provider: conn.provider,
         name: conn.name,
-        credentials_enc: encrypt(JSON.stringify(conn.credentials)),
+        credentials_enc: encrypt(JSON.stringify({})),
         status: 'pending',
       });
       results.push({ type: 'dns_connection', name: conn.name, status: 'created' });

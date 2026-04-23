@@ -116,11 +116,22 @@ function BillingContent() {
         </button>
       </div>
 
-      {/* Setup hint */}
-      <div className={styles.setupHint}>
-        <strong>GCP:</strong> Add <code>&quot;billing_dataset&quot;: &quot;project_id.dataset_name&quot;</code> to your GCP service account JSON to enable BigQuery billing export.
-        {' '}<strong>AWS:</strong> Ensure your IAM user has <code>ce:GetCostAndUsage</code> permission.
-        {' '}<strong>Hetzner:</strong> Billing is pulled automatically from the Cloud API using your existing API token.
+      {/* Setup hints */}
+      <div className={styles.setupHints}>
+        <div className={styles.setupHintRow}>
+          <span className={styles.setupHintProvider}>GCP</span>
+          <span>
+            Add <code>&quot;billing_dataset&quot;: &quot;project_id.dataset_name&quot;</code> to your service account JSON to enable BigQuery billing export.
+          </span>
+        </div>
+        <div className={styles.setupHintRow}>
+          <span className={styles.setupHintProvider}>AWS</span>
+          <span>Ensure your IAM user has the <code>ce:GetCostAndUsage</code> permission.</span>
+        </div>
+        <div className={styles.setupHintRow}>
+          <span className={styles.setupHintProvider}>Hetzner</span>
+          <span>Billing is pulled automatically from the Cloud API using your existing API token.</span>
+        </div>
       </div>
 
       {/* Toolbar */}

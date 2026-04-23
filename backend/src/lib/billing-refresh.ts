@@ -79,21 +79,51 @@ export async function runBillingForConnections(
         rows = await fetchHetznerBillingActuals(credentials.token as string, period);
       }
 
-      for (const row of rows) {
+      // For providers with null project_id (e.g. Hetzner), PostgreSQL's unique
+      // constraint never fires because NULL != NULL, so onConflict().merge() is
+      // a no-op and each fetch inserts a duplicate row. Fix: delete-then-insert
+      // for any service keys that will be null-project rows.
+      const nullProjectServices = rows
+        .filter((r) => r.project_id === null)
+        .map((r) => r.service);
+      if (nullProjectServices.length > 0) {
         await db('billing_actuals')
-          .insert({
+          .where({ connection_id: conn.id, period })
+          .whereNull('project_id')
+          .whereIn('service', nullProjectServices)
+          .delete();
+      }
+
+      for (const row of rows) {
+        if (row.project_id === null) {
+          // Already cleared above — plain insert is safe.
+          await db('billing_actuals').insert({
             connection_id: conn.id,
             provider: conn.provider,
             period,
-            project_id: row.project_id,
+            project_id: null,
             project_name: row.project_name,
             service: row.service,
             amount_usd: row.amount_usd,
             currency: row.currency,
             fetched_at: new Date(),
-          })
-          .onConflict(['connection_id', 'period', 'project_id', 'service'])
-          .merge(['amount_usd', 'currency', 'project_name', 'fetched_at']);
+          });
+        } else {
+          await db('billing_actuals')
+            .insert({
+              connection_id: conn.id,
+              provider: conn.provider,
+              period,
+              project_id: row.project_id,
+              project_name: row.project_name,
+              service: row.service,
+              amount_usd: row.amount_usd,
+              currency: row.currency,
+              fetched_at: new Date(),
+            })
+            .onConflict(['connection_id', 'period', 'project_id', 'service'])
+            .merge(['amount_usd', 'currency', 'project_name', 'fetched_at']);
+        }
       }
 
       results.push({

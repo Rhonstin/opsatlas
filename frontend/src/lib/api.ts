@@ -180,6 +180,15 @@ export const api = {
   getAutoUpdateRuns: (policyId: string) =>
     request<AutoUpdateRun[]>(`/auto-update-policies/${policyId}/runs`),
 
+  // Favorites
+  getFavorites: () => request<Instance[]>('/favorites'),
+
+  addFavorite: (instanceId: string) =>
+    request<{ ok: boolean }>(`/favorites/${instanceId}`, { method: 'POST' }),
+
+  removeFavorite: (instanceId: string) =>
+    request<void>(`/favorites/${instanceId}`, { method: 'DELETE' }),
+
   // Config export / import
   exportConfig: () => request<ConfigExport>('/config/export'),
 
@@ -236,6 +245,7 @@ export interface Instance {
   estimated_monthly_cost: string | null;
   project_or_account_id: string | null;
   created_at: string;
+  is_favorited: boolean;
 }
 
 export interface GcpProject {
@@ -396,8 +406,8 @@ export interface CostSummary {
 export interface ConfigExport {
   version: number;
   exported_at: string;
-  cloud_connections: Array<{ provider: string; name: string; credentials: unknown }>;
-  dns_connections: Array<{ provider: string; name: string; credentials: unknown }>;
+  cloud_connections: Array<{ provider: string; name: string }>;
+  dns_connections: Array<{ provider: string; name: string }>;
   auto_update_policies: Array<{
     name: string;
     scope: string;

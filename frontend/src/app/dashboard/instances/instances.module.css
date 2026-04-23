@@ -194,6 +194,32 @@
 }
 .instNameBtn:hover { text-decoration-color: var(--muted); }
 
+.nameCell {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.starBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: color 0.15s, transform 0.1s;
+  opacity: 0.5;
+}
+.starBtn:hover { opacity: 1; color: #f59e0b; transform: scale(1.15); }
+.starBtnActive {
+  color: #f59e0b;
+  opacity: 1;
+}
+
 /* Detail drawer */
 .drawerOverlay {
   position: fixed;

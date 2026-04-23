@@ -170,7 +170,7 @@
 - [x] Sorting on all columns (client-side, `useSort` hook)
 - [x] Search / text filter (name, IP, region, zone, connection, machine type)
 - [x] Summary widgets (instance count, running count, est. monthly cost)
-- [ ] Per-provider breakdown widget
+- [x] Per-provider breakdown widget
 
 ### Milestone 7 — Cost Layer ✅
 - [x] Estimated cost per instance (hourly + monthly)
@@ -311,6 +311,199 @@ Real billing data from cloud provider APIs.
 - [x] Billing nav link enabled
 - [ ] Scheduled billing refresh via auto-update policy
 
+### Milestone 15A — Long-Running Instance Alerts
+Notify users when costly instances have been running continuously for too long, with per-instance suppression.
+
+**Goal:** catch forgotten instances burning money — a single daily digest surfaces anything running ≥ 1 day that isn't explicitly excluded.
+
+#### Data model
+
+**LongRunningAlert rule** (`long_running_alert_rules`)
+- `id`, `user_id`
+- `threshold_hours` — integer, default `24`; alert fires when `uptime_hours ≥ threshold_hours`
+- `enabled` — boolean
+- `created_at`, `updated_at`
+
+**LongRunningExclusion** (`long_running_exclusions`)
+- `id`, `user_id`, `instance_id` (FK → instances)
+- `reason` — optional free-text note (e.g. "24/7 prod DB — expected")
+- `created_at`
+
+#### Work items
+- [ ] DB migrations: `long_running_alert_rules`, `long_running_exclusions`
+- [ ] `GET /alerts/long-running/rule` — fetch the user's rule (threshold + enabled)
+- [ ] `PUT /alerts/long-running/rule` — update threshold / toggle enabled
+- [ ] `GET /alerts/long-running/exclusions` — list excluded instances
+- [ ] `POST /alerts/long-running/exclusions` — exclude an instance (body: `{ instance_id, reason? }`)
+- [ ] `DELETE /alerts/long-running/exclusions/:instance_id` — remove exclusion
+- [ ] `GET /alerts/long-running/triggered` — instances currently matching the rule (uptime ≥ threshold, not excluded, RUNNING)
+- [ ] Scheduler: evaluate rule every hour, write results to `alert_events` (deduplicated — one open event per instance until resolved)
+- [ ] In-app notification bell: badge count of open long-running alerts
+- [ ] Alert list page (`/dashboard/alerts`) — shows triggered instances with cost, uptime, and Exclude / Dismiss actions
+- [ ] Instances page: "Exclude from alerts" action in the row context menu and detail drawer
+- [ ] Dashboard card: "N instances running > Xh" with link to alert list
+- [ ] Settings tab: configure threshold (24h / 48h / 7d / custom) and toggle alerts on/off
+
+#### Implementation notes
+- Deduplication: use an `alert_events` table (`instance_id`, `rule_id`, `opened_at`, `resolved_at`) — only open one event per instance; resolve when instance stops or is excluded
+- Evaluation query: `SELECT instances.* FROM instances LEFT JOIN long_running_exclusions ... WHERE uptime_hours >= threshold AND exclusion IS NULL AND status = 'RUNNING'`
+- Phase 2: email / Slack webhook delivery of the daily digest
+
+### Milestone 15B — Cost Limits & Budget Alerts
+Set monthly spend budgets at the project, connection, or provider level and get notified when actual or estimated spend approaches or exceeds the limit.
+
+**Goal:** prevent surprise cloud bills — define a ceiling, get warned early, see at a glance what's over budget.
+
+#### Data model
+
+**CostLimit** (`cost_limits`)
+- `id`, `user_id`
+- `scope` — `provider` | `connection` | `project`
+- `scope_id` — provider string (e.g. `gcp`) or UUID of connection / project_or_account
+- `scope_label` — display name, denormalized for fast rendering
+- `limit_usd` — decimal, the monthly ceiling
+- `warn_pct` — integer 0–99, warn threshold as % of limit (default `80`)
+- `enabled` — boolean
+- `created_at`, `updated_at`
+
+**AlertEvent** (shared with 15A) — reuse `alert_events` table with `type` column (`long_running` | `cost_limit`)
+
+#### Work items
+- [ ] DB migration: `cost_limits` table
+- [ ] `GET /cost-limits` — list all limits for the user
+- [ ] `POST /cost-limits` — create a limit
+- [ ] `PATCH /cost-limits/:id` — update amount, warn_pct, enabled
+- [ ] `DELETE /cost-limits/:id` — remove a limit
+- [ ] `GET /cost-limits/status` — each limit enriched with current actual + estimated spend, status (`ok` | `warn` | `exceeded`)
+- [ ] Scheduler: evaluate limits hourly against `billing_actuals` + estimated MTD; write alert events on threshold crossing; resolve when spend drops below warn_pct (e.g. after a new period starts)
+- [ ] Budget status widget on dashboard: colored bar (green / amber / red) per limit showing spent / ceiling
+- [ ] Alert list page (`/dashboard/alerts`) — merge cost limit breaches with long-running alerts from 15A
+- [ ] In-app notification bell: include cost limit breach count in badge
+- [ ] Billing page: inline limit bar above each provider/project section
+- [ ] Settings tab: manage all limits (add / edit / delete, set warn threshold %)
+- [ ] Phase 2: email / Slack notification when warn or exceeded threshold crossed
+
+#### Implementation notes
+- Spend source priority: use `billing_actuals` if available for the period; fall back to estimated MTD (hourly rate × hours elapsed this month)
+- Status thresholds: `ok` = spend < warn_pct% of limit; `warn` = spend ≥ warn_pct% but < 100%; `exceeded` = spend ≥ limit
+- Scope resolution: `provider` → sum all `billing_actuals` rows for that provider; `connection` → filter by `connection_id`; `project` → filter by `project_id`
+
+### Milestone 15C — Notification Providers
+Deliver alerts (from 15A long-running and 15B cost limits) to external channels. Configured in Settings → Notifications.
+
+**Goal:** get alerted where you already work — Slack, Telegram, email, or any webhook — without polling the dashboard.
+
+#### Data model
+
+**NotificationChannel** (`notification_channels`)
+- `id`, `user_id`
+- `provider` — `slack` | `telegram` | `email` | `webhook` | `ntfy` | `pushover`
+- `name` — user-defined label (e.g. "Ops Slack", "Personal Telegram")
+- `config_enc` — AES-encrypted JSON; shape varies by provider (see below)
+- `enabled` — boolean
+- `last_tested_at`, `last_error`
+- `created_at`, `updated_at`
+
+**AlertChannelBinding** (`alert_channel_bindings`)
+- `id`, `user_id`
+- `alert_type` — `long_running` | `cost_limit` | `all`
+- `channel_id` — FK → `notification_channels`
+
+#### Provider config shapes (stored in `config_enc`)
+| Provider | Fields |
+|---|---|
+| Slack | `webhook_url` |
+| Telegram | `bot_token`, `chat_id` |
+| Email | `to`, `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `from` |
+| Webhook (generic) | `url`, `method` (`POST`\|`GET`), `headers` (key-value map), `body_template` |
+| ntfy.sh | `topic`, `server` (default `https://ntfy.sh`) |
+| Pushover | `app_token`, `user_key` |
+
+#### Work items
+- [ ] DB migrations: `notification_channels`, `alert_channel_bindings`
+- [ ] `GET /notification-channels` — list channels
+- [ ] `POST /notification-channels` — create channel (credentials encrypted at rest)
+- [ ] `PATCH /notification-channels/:id` — update config / name / enabled
+- [ ] `DELETE /notification-channels/:id` — remove
+- [ ] `POST /notification-channels/:id/test` — send a test notification through the channel
+- [ ] `GET /notification-channels/:id/bindings` — which alert types are routed here
+- [ ] `PUT /notification-channels/:id/bindings` — update bindings
+- [ ] Notification dispatcher service (`src/lib/notify.ts`): `sendAlert(alertType, payload, userId)` → looks up enabled channels for user + alert type, calls provider-specific sender
+- [ ] Provider senders: `slack.ts` (Incoming Webhook), `telegram.ts` (Bot API `sendMessage`), `email.ts` (nodemailer), `webhook.ts` (fetch + template), `ntfy.ts`, `pushover.ts`
+- [ ] Scheduler integration: call dispatcher after evaluating 15A + 15B rules
+- [ ] Settings → Notifications tab: channel list, add/edit modal with provider picker, Test button, per-channel binding toggles (which alerts go here)
+- [ ] Notification history log: last 50 dispatches per channel (timestamp, alert type, status, error)
+
+#### Implementation notes
+- All credentials stored via `encrypt()` — never returned to frontend in plaintext; test endpoint decrypts server-side and fires live
+- Deduplication: dispatcher checks `alert_events` — only send when an event transitions to `warn`/`exceeded`/`triggered`, not on every scheduler tick
+- Body template for generic webhook: simple `{{variable}}` substitution (`{{instance_name}}`, `{{uptime_hours}}`, `{{cost}}`, `{{limit}}`, `{{provider}}`)
+- ntfy.sh is the easiest self-hosted option — good default to highlight in the UI
+
+### Milestone 16 — Multi-User & Roles (RBAC)
+Share an opsatlas instance across a team with three role tiers. Each role limits what data is visible and what actions can be taken.
+
+**Goal:** let ops teams, developers, and external stakeholders use the same dashboard without exposing credentials, billing data, or destructive controls to everyone.
+
+#### Roles
+
+| Role | Description |
+|---|---|
+| **Admin** | Full access. Manages connections, credentials, users, settings, billing, alerts, policies. |
+| **Viewer** | Read-only access to instances, DNS, sync history, alerts. Sees cost estimates. Cannot see actual billing amounts, credentials, or connection details. |
+| **Observer** | Like Viewer but with all cost and pricing information hidden — suitable for developers or external guests who need to see infrastructure state without financial data. |
+
+#### Permission matrix
+
+| Capability | Admin | Viewer | Observer |
+|---|---|---|---|
+| View instances / DNS | ✓ | ✓ | ✓ |
+| View estimated cost | ✓ | ✓ | — |
+| View actual billing | ✓ | — | — |
+| Trigger sync | ✓ | ✓ | — |
+| Add / edit connections | ✓ | — | — |
+| View connection credentials | ✓ | — | — |
+| Manage auto-update policies | ✓ | — | — |
+| Manage alert rules | ✓ | — | — |
+| Manage cost limits | ✓ | — | — |
+| Manage users | ✓ | — | — |
+| Settings (SSO, config, notifications) | ✓ | — | — |
+| Star favorites | ✓ | ✓ | ✓ |
+
+#### Data model
+
+**User** (existing) — add `role` column: `admin` | `viewer` | `observer`; add `invited_by` (FK → users, nullable)
+
+**UserInvite** (`user_invites`)
+- `id`, `invited_by` (FK → users), `email`, `role`
+- `token` — secure random token sent in invite link
+- `accepted_at`, `expires_at`
+- `created_at`
+
+#### Work items
+- [ ] DB migration: add `role` to `users`; create `user_invites` table
+- [ ] Migrate existing users to `admin` role
+- [ ] `GET /admin/users` — list all users with roles (admin only)
+- [ ] `PATCH /admin/users/:id` — change role or deactivate (admin only)
+- [ ] `DELETE /admin/users/:id` — remove user and their data (admin only)
+- [ ] `POST /admin/invites` — generate invite link for email + role (admin only)
+- [ ] `GET /auth/invite/:token` — validate token, return email + role for the accept form
+- [ ] `POST /auth/invite/:token/accept` — set password and activate account
+- [ ] `requireRole(role)` middleware — returns 403 if `req.user.role` is insufficient; applied to all mutating and sensitive routes
+- [ ] `requireRole('admin')` on: connections CRUD, settings, billing refresh, user management, alert rule edits, cost limit edits, policy edits
+- [ ] `requireRole('viewer')` on: sync trigger, alert rule reads, billing actuals reads
+- [ ] Cost / billing fields stripped from API responses for Observer role: `estimated_hourly_cost`, `estimated_monthly_cost`, billing actuals endpoints return 403
+- [ ] Settings → Users tab (admin only): user list with role badges, Invite button, role change dropdown, Remove button
+- [ ] Invite flow UI: `/auth/invite/[token]` page — shows invited email + role, password fields, creates account on submit
+- [ ] Role badge visible on the user avatar / nav (so users know their own role)
+- [ ] SSO-provisioned users default to `viewer` role (configurable via Settings → SSO)
+
+#### Implementation notes
+- Role stored on the JWT payload (`role` claim) so middleware can check it without a DB round-trip per request
+- Re-issue token on role change so the old token loses its elevated claims within its remaining TTL (max 24 h, per security hardening)
+- Observer cost stripping: done in the API response layer, not the DB query, to avoid duplicating queries
+- Invite tokens: `crypto.randomBytes(32).toString('hex')`, expire in 7 days, single-use
+
 ### Milestone 15 — Dashboard Overhaul
 Consolidate cost visibility and surface real billing data on the main dashboard.
 
@@ -323,6 +516,110 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - [x] Show actual/estimate delta badge when billing data is available
 - [x] Fix long-running / idle candidate quick links (tabs were removed from instances page)
 - [x] Provider instance count breakdown (GCP N · AWS N · Hetzner N)
+
+### Milestone 17 — In-App Self-Update
+Update the opsatlas application to a new release directly from the web UI — no SSH, no CLI — exactly like Coolify's "Upgrade Available → Upgrade Now" flow.
+
+**Goal:** admins see a version badge in the nav, get notified when a new release is available, and can upgrade with a single button click. The UI streams live progress and shows success or rollback options.
+
+#### UX flow (mirrors the Coolify pattern)
+
+1. Nav shows current version + a red badge when an update is available
+2. Clicking the badge opens an **Upgrade modal**: current version → new version, caution note ("opsatlas will restart for ~30 seconds"), changelog excerpt from GitHub
+3. Admin clicks **Upgrade Now** → backend streams live log output to the modal terminal
+4. On completion the modal shows "Up to date ✓" and prompts a page reload
+5. On failure: error log visible in-modal + **Rollback** button
+
+#### Data model / state
+
+No DB table. A single in-memory `UpdateJob` singleton writes its state to `/tmp/opsatlas-update.json` so it survives the Node restart mid-upgrade.
+
+**UpdateJob**
+- `status` — `idle` | `checking` | `pulling` | `restarting` | `migrating` | `done` | `error`
+- `current_version` — read from `package.json` at startup
+- `latest_version` — fetched from GitHub releases API
+- `started_at`, `finished_at`
+- `log` — ring buffer of output lines (last 200)
+- `error` — error string if failed
+
+#### Work items
+- [ ] Embed `APP_VERSION` from `package.json` into backend at startup
+- [ ] `GET /admin/update/check` — query GitHub releases API for latest tag; diff against `APP_VERSION`; return `{ current, latest, update_available, changelog_url, changelog_excerpt }`; cache response 5 min with ETag
+- [ ] `POST /admin/update/start` — admin only; validates Docker socket is reachable; tags current images as `:rollback`; spawns detached update script; returns job id
+- [ ] `GET /admin/update/status` — returns `UpdateJob` state + last N log lines; frontend polls at 2 s intervals while status is not `done`/`error`
+- [ ] `GET /admin/update/stream` — SSE endpoint streaming live stdout/stderr from the update script
+- [ ] `POST /admin/update/rollback` — admin only; runs `docker compose up -d` with the `:rollback` tagged images
+- [ ] Update script (`scripts/self-update.sh`):
+  ```
+  docker compose pull
+  docker compose up -d
+  docker compose exec -T backend npm run migrate
+  ```
+  Writes step markers to `/tmp/opsatlas-update.json` throughout
+- [ ] `GET /health` extended with `version` field so frontend detects when new backend is live
+- [ ] **Nav version badge**: small muted version string in the sidebar/footer; turns amber with "↑ Update available" dot when newer version detected; polls `check` every 6 h
+- [ ] **Upgrade modal** (Settings → About or triggered from nav badge):
+  - Current → new version header
+  - Caution warning box ("opsatlas will be unavailable for ~30 seconds during restart")
+  - Changelog excerpt with link to full release notes
+  - **Upgrade Now** button → opens live log terminal in-modal
+  - Scrolling monospace log output streamed via SSE
+  - Success state: "✓ Updated to vX.Y.Z" + **Reload** button
+  - Error state: log + **Rollback** button
+- [ ] Settings → About tab: version info, last checked timestamp, manual "Check now" button
+
+#### Implementation notes
+- Detached child process: `spawn('bash', ['scripts/self-update.sh'], { detached: true, stdio: 'pipe' })` — outlives the Node process during restart
+- `/tmp/opsatlas-update.json` is the source of truth during the restart gap — new process reads it on boot and resumes SSE stream from where it left off
+- Docker socket: backend container must mount `/var/run/docker.sock`; document in `DEPLOYMENT.md` and example `docker-compose.yml`
+- Version tagging before pull: `docker tag opsatlas-backend:latest opsatlas-backend:rollback` gives rollback a concrete target
+- GitHub API rate limit: 60 req/h unauthenticated — 6 h polling cadence keeps well under the limit
+- Air-gap installs: if GitHub is unreachable, `check` returns `{ reachable: false }` and the modal shows a manual "I have version X.Y.Z" input instead
+
+### Milestone 18 — Real-Time Live Updates (SSE)
+Push live data changes to the browser as they happen — no manual refresh, no polling — similar to how Coolify streams build logs and BorgBase shows backup progress in real time.
+
+**Goal:** the dashboard, instances list, sync status, and alerts update themselves the moment the backend has new data, giving an always-current view of the fleet.
+
+#### Transport
+
+**Server-Sent Events (SSE)** — simpler than WebSocket, works through proxies, auto-reconnects natively. One persistent connection per browser tab on `GET /events`.
+
+#### Event types
+
+| Event | Payload | Triggered by |
+|---|---|---|
+| `sync.started` | `{ connection_id, run_id }` | `POST /sync/:id` |
+| `sync.finished` | `{ connection_id, run_id, status, error? }` | sync job completion |
+| `instance.updated` | `{ id, status, last_seen_at }` | sync upsert batch complete |
+| `billing.refreshed` | `{ period, connection_id, rows }` | billing refresh done |
+| `alert.triggered` | `{ type, instance_id?, limit_id?, message }` | alert evaluator |
+| `alert.resolved` | `{ type, instance_id?, limit_id? }` | alert cleared |
+| `ping` | `{ ts }` | every 30 s — keeps connection alive through proxies |
+
+#### Data model
+
+No DB table. Events flow through an **in-process event bus** () fanned out to all connected SSE clients for that user. No Redis required for single-node deployments.
+
+#### Work items
+- [ ] `src/lib/eventBus.ts` — typed `EventEmitter` singleton; `emit(userId, event)` + `subscribe(userId, handler)` + `unsubscribe`
+- [ ] `GET /events` — SSE endpoint; authenticates via `?token=<jwt>` query param (native `EventSource` cannot set headers); streams events for the authenticated user; sends `ping` every 30 s; cleans up handlers on disconnect
+- [ ] Emit `sync.started` / `sync.finished` from `routes/sync.ts`
+- [ ] Emit `instance.updated` from sync route after each full sync run (one event per run, not per row)
+- [ ] Emit `billing.refreshed` from `billing-refresh.ts` after upsert loop
+- [ ] Emit `alert.triggered` / `alert.resolved` from the alert scheduler (Milestones 15A + 15B)
+- [ ] Frontend `src/lib/useEvents.ts` hook — wraps `EventSource`, reconnects with exponential backoff, dispatches typed events to registered handlers
+- [ ] Dashboard: subscribe to `instance.updated`, `sync.finished`, `billing.refreshed` → auto-refetch affected data
+- [ ] Instances page: `sync.finished` → refetch list; `instance.updated` → patch changed row in-place without full reload
+- [ ] Sync history: `sync.started` / `sync.finished` → append / update run row live
+- [ ] Alert list: `alert.triggered` / `alert.resolved` → add/remove from list; notification bell badge updates
+- [ ] Live indicator: pulsing green dot in the nav while SSE connection is open; grey when disconnected
+
+#### Implementation notes
+- SSE auth via query param: `new EventSource('/events?token=' + token)` — validated identically to the `Authorization: Bearer` middleware
+- Fan-out: connected responses stored in `Map<userId, Set<Response>>`; `emit(userId, e)` iterates the set and writes `data: ...` to each
+- Missed events: assign `id:` to each event; browser sends `Last-Event-ID` on reconnect; backend replays from an in-memory ring buffer (last 50 events per user)
+- Nginx / proxy: set `X-Accel-Buffering: no` and `Cache-Control: no-cache` on the SSE response to prevent buffering
 
 ---
 
@@ -388,6 +685,47 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - `GET /billing/periods`
 - `POST /billing/refresh`
 
+### Live Updates / SSE *(Milestone 18)*
+- `GET /events`
+
+### Self-Update *(Milestone 17)*
+- `GET /admin/update/check`
+- `POST /admin/update/start`
+- `GET /admin/update/status`
+- `GET /admin/update/stream` *(SSE)*
+- `POST /admin/update/rollback`
+
+### Users & Roles *(Milestone 16)*
+- `GET /admin/users`
+- `PATCH /admin/users/:id`
+- `DELETE /admin/users/:id`
+- `POST /admin/invites`
+- `GET /auth/invite/:token`
+- `POST /auth/invite/:token/accept`
+
+### Notification Channels *(Milestone 15C)*
+- `GET /notification-channels`
+- `POST /notification-channels`
+- `PATCH /notification-channels/:id`
+- `DELETE /notification-channels/:id`
+- `POST /notification-channels/:id/test`
+- `PUT /notification-channels/:id/bindings`
+
+### Cost Limits *(Milestone 15B)*
+- `GET /cost-limits`
+- `POST /cost-limits`
+- `PATCH /cost-limits/:id`
+- `DELETE /cost-limits/:id`
+- `GET /cost-limits/status`
+
+### Long-Running Alerts *(Milestone 15A)*
+- `GET /alerts/long-running/rule`
+- `PUT /alerts/long-running/rule`
+- `GET /alerts/long-running/triggered`
+- `GET /alerts/long-running/exclusions`
+- `POST /alerts/long-running/exclusions`
+- `DELETE /alerts/long-running/exclusions/:instance_id`
+
 ### Port Scanning *(Milestone 12)*
 - `POST /port-scan/:instance_id`
 - `GET /ports`
@@ -436,5 +774,5 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - **Billing:** Enable billing nav link, scheduled billing refresh, cost anomaly alerts
 - **Alerting:** Slack / email alerts on sync errors or port exposure
 - **Security:** Port scanning, compliance scanning (PCI, SOC2, CIS)
-- **Organization:** RBAC / teams, smart tag suggestions from provider labels, favorites
+- **Organization:** smart tag suggestions from provider labels, team workspaces (multiple orgs)
 - **Connection wizard:** step-by-step guided flow for adding providers

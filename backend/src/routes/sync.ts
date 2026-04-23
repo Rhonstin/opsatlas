@@ -40,7 +40,9 @@ router.post('/:connection_id', async (req: AuthRequest, res: Response) => {
   res.status(202).json({ sync_run_id: run.id, status: 'running' });
 
   // Run sync async (fire-and-forget, result is stored in DB)
-  runSync(conn, run.id).catch(() => {/* already handled inside */});
+  runSync(conn, run.id).catch((err: unknown) => {
+    console.error(`[sync] Uncaught error for run ${run.id}:`, err instanceof Error ? err.message : err);
+  });
 });
 
 async function runSync(conn: Record<string, string>, runId: string) {

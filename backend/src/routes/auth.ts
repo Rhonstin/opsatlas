@@ -1,11 +1,24 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import db from '../db';
+import { encrypt, decrypt } from '../lib/crypto';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const SALT_ROUNDS = 12;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Rate limiter for auth endpoints — 10 attempts per 15 min per IP */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' },
+});
 
 /** GET /auth/config — public endpoint, returns server feature flags */
 router.get('/config', async (_req: Request, res: Response) => {
@@ -26,11 +39,15 @@ router.put('/config', authenticateToken, async (req: AuthRequest, res: Response)
   res.json({ ok: true });
 });
 
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', authLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
     res.status(400).json({ error: 'Email and password are required' });
+    return;
+  }
+  if (!EMAIL_RE.test(email)) {
+    res.status(400).json({ error: 'Invalid email format' });
     return;
   }
   if (password.length < 8) {
@@ -58,7 +75,7 @@ router.post('/register', async (req: Request, res: Response) => {
   res.status(201).json({ token, user: { id: user.id, email: user.email } });
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -95,6 +112,18 @@ interface AuthentikConfig {
   clientSecret: string;
 }
 
+/**
+ * Safely decrypt a stored SSO secret.
+ * If the value is not encrypted (legacy plain-text), returns it as-is.
+ */
+function safeDecryptSecret(value: string): string {
+  try {
+    return decrypt(value);
+  } catch {
+    return value; // pre-encryption value — still works, will be re-encrypted on next save
+  }
+}
+
 /** Read Authentik config from DB first, falling back to env vars. */
 async function getAuthentikConfig(): Promise<AuthentikConfig | null> {
   const rows = await db('app_settings')
@@ -108,7 +137,7 @@ async function getAuthentikConfig(): Promise<AuthentikConfig | null> {
     return {
       url: map.authentik_url,
       clientId: map.authentik_client_id,
-      clientSecret: map.authentik_client_secret,
+      clientSecret: safeDecryptSecret(map.authentik_client_secret),
     };
   }
 
@@ -121,13 +150,11 @@ async function getAuthentikConfig(): Promise<AuthentikConfig | null> {
   return null;
 }
 
-/** Returns which SSO providers are configured. */
+/** Returns which SSO providers are configured — minimal info only, no secrets. */
 router.get('/providers', async (_req: Request, res: Response) => {
   const config = await getAuthentikConfig();
   res.json({
-    authentik: config
-      ? { enabled: true, url: config.url, clientId: config.clientId }
-      : { enabled: false },
+    authentik: config ? { enabled: true } : { enabled: false },
   });
 });
 
@@ -160,8 +187,8 @@ router.put('/sso-config', authenticateToken, async (req: AuthRequest, res: Respo
   const updates: Array<{ key: string; value: string }> = [];
   if (url !== undefined) updates.push({ key: 'authentik_url', value: url });
   if (clientId !== undefined) updates.push({ key: 'authentik_client_id', value: clientId });
-  // Only update secret if a non-empty value was provided
-  if (clientSecret) updates.push({ key: 'authentik_client_secret', value: clientSecret });
+  // Encrypt the client secret before storing
+  if (clientSecret) updates.push({ key: 'authentik_client_secret', value: encrypt(clientSecret) });
 
   for (const { key, value } of updates) {
     await db('app_settings')
@@ -270,7 +297,7 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
 function issueToken(userId: string): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET not set');
-  return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+  return jwt.sign({ userId }, secret, { expiresIn: '24h', algorithm: 'HS256' });
 }
 
 export default router;

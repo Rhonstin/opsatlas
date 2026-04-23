@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, Instance } from '@/lib/api';
 import { useSort } from '@/lib/useSort';
@@ -47,10 +47,6 @@ function isLongRunning(inst: Instance): boolean {
   return inst.status === 'RUNNING' && inst.uptime_hours !== null && inst.uptime_hours > LONG_RUNNING_HOURS;
 }
 
-function isIdle(inst: Instance): boolean {
-  return inst.status === 'STOPPED' || inst.status === 'TERMINATED';
-}
-
 /** Cost accrued from the start of the current month until now (RUNNING only). */
 function calcCostToDate(inst: Instance): number {
   if (inst.status !== 'RUNNING' || !inst.estimated_hourly_cost) return 0;
@@ -65,14 +61,13 @@ function calcCostToDate(inst: Instance): number {
   return hourly * ((now - instanceStart) / 3_600_000);
 }
 
-
 type SortKey = 'name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
-type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner';
+type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'starred';
 
 function InstancesPageInner() {
   const searchParams = useSearchParams();
   const rawView = searchParams.get('view') ?? 'all';
-  const initialView = (['all', 'gcp', 'aws', 'hetzner'].includes(rawView) ? rawView : 'all') as ViewMode;
+  const initialView = (['all', 'gcp', 'aws', 'hetzner', 'starred'].includes(rawView) ? rawView : 'all') as ViewMode;
 
   const [instances, setInstances] = useState<InstanceWithDns[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,9 +77,13 @@ function InstancesPageInner() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>(initialView);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [togglingFav, setTogglingFav] = useState<string | null>(null);
 
   const filtered: InstanceWithDns[] = instances.filter((inst) => {
-    if (view !== 'all' && inst.provider !== view) return false;
+    if (view === 'starred' && !inst.is_favorited) return false;
+    if (view !== 'all' && view !== 'starred' && inst.provider !== view) return false;
+    if (filterStatus && inst.status !== filterStatus) return false;
+    if (filterResourceType && inst.resource_type !== filterResourceType) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -106,7 +105,7 @@ function InstancesPageInner() {
     'name',
   );
 
-  async function fetchInstances() {
+  const fetchInstances = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, string> = {};
@@ -119,9 +118,35 @@ function InstancesPageInner() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterStatus, filterResourceType]);
 
-  useEffect(() => { fetchInstances(); }, [filterStatus, filterResourceType]);
+  useEffect(() => { fetchInstances(); }, [fetchInstances]);
+
+  async function toggleFavorite(inst: InstanceWithDns, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (togglingFav === inst.id) return;
+    setTogglingFav(inst.id);
+
+    // Optimistic update
+    setInstances((prev) =>
+      prev.map((i) => i.id === inst.id ? { ...i, is_favorited: !i.is_favorited } : i),
+    );
+
+    try {
+      if (inst.is_favorited) {
+        await api.removeFavorite(inst.id);
+      } else {
+        await api.addFavorite(inst.id);
+      }
+    } catch {
+      // Revert on failure
+      setInstances((prev) =>
+        prev.map((i) => i.id === inst.id ? { ...i, is_favorited: inst.is_favorited } : i),
+      );
+    } finally {
+      setTogglingFav(null);
+    }
+  }
 
   const totalMonthlyCost = instances.reduce(
     (sum, i) => sum + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0),
@@ -129,6 +154,7 @@ function InstancesPageInner() {
   );
 
   const providerCount = (p: string) => instances.filter((i) => i.provider === p).length;
+  const starredCount = instances.filter((i) => i.is_favorited).length;
 
   function col(key: SortKey, label: string) {
     return (
@@ -183,6 +209,7 @@ function InstancesPageInner() {
         {viewTab('gcp', 'GCP', providerCount('gcp'))}
         {viewTab('aws', 'AWS', providerCount('aws'))}
         {viewTab('hetzner', 'Hetzner', providerCount('hetzner'))}
+        {viewTab('starred', '★ Starred', starredCount)}
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
@@ -190,7 +217,13 @@ function InstancesPageInner() {
 
       {!loading && filtered.length === 0 && (
         <div className="empty-state">
-          {view === 'all' && !search && !filterStatus && !filterResourceType ? (
+          {view === 'starred' ? (
+            <>
+              <div className="empty-state-icon">★</div>
+              <h3>No starred instances</h3>
+              <p>Click the star on any instance to pin it here for quick access.</p>
+            </>
+          ) : view === 'all' && !search && !filterStatus && !filterResourceType ? (
             <>
               <div className="empty-state-icon">🖥</div>
               <h3>No instances yet</h3>
@@ -234,14 +267,24 @@ function InstancesPageInner() {
           </div>
           {sorted.map((inst) => (
             <div key={inst.id} className={`${styles.row} ${isLongRunning(inst) ? styles.rowWarning : ''}`}>
-              <div>
+              <div className={styles.nameCell}>
                 <button
-                  className={styles.instNameBtn}
-                  onClick={() => setSelectedInstanceId(inst.id)}
+                  className={`${styles.starBtn} ${inst.is_favorited ? styles.starBtnActive : ''}`}
+                  onClick={(e) => toggleFavorite(inst, e)}
+                  title={inst.is_favorited ? 'Remove from starred' : 'Star this instance'}
+                  aria-label={inst.is_favorited ? 'Unstar' : 'Star'}
                 >
-                  {inst.name}
+                  {inst.is_favorited ? '★' : '☆'}
                 </button>
-                <div className={styles.instId}>{inst.instance_id}</div>
+                <div>
+                  <button
+                    className={styles.instNameBtn}
+                    onClick={() => setSelectedInstanceId(inst.id)}
+                  >
+                    {inst.name}
+                  </button>
+                  <div className={styles.instId}>{inst.instance_id}</div>
+                </div>
               </div>
               <div>
                 <span className={styles.provider}>{inst.provider.toUpperCase()}</span>
@@ -320,6 +363,11 @@ function InstancesPageInner() {
         <InstanceDrawer
           instanceId={selectedInstanceId}
           onClose={() => setSelectedInstanceId(null)}
+          onFavoriteToggle={(id, isFav) => {
+            setInstances((prev) =>
+              prev.map((i) => i.id === id ? { ...i, is_favorited: isFav } : i),
+            );
+          }}
         />
       )}
     </div>

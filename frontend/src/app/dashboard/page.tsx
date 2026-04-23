@@ -25,12 +25,14 @@ export default function DashboardPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [billingActuals, setBillingActuals] = useState<BillingActual[]>([]);
+  const [favorites, setFavorites] = useState<Instance[]>([]);
 
   useEffect(() => {
     api.getInstances().then(setInstances).catch(() => {});
     api.getConnections().then(setConnections).catch(() => {});
     api.getCostSummary().then(setCostSummary).catch(() => {});
     api.getBillingActuals(currentPeriod()).then(setBillingActuals).catch(() => {});
+    api.getFavorites().then(setFavorites).catch(() => {});
   }, []);
 
   // ── Estimated costs ──────────────────────────────────────────────────────
@@ -151,6 +153,45 @@ export default function DashboardPage() {
           <div className={styles.cardNote}>Full month at current rate</div>
         </div>
       </div>
+
+      {/* ── Per-provider breakdown widget ── */}
+      {activeProviders.length > 0 && (
+        <div className={styles.providerCards}>
+          {activeProviders.map((p) => {
+            const s = providerStats[p];
+            const badgeClass = p === 'gcp'
+              ? styles.providerBadgeGcp
+              : p === 'aws'
+                ? styles.providerBadgeAws
+                : styles.providerBadgeHetzner;
+            const sym = p === 'hetzner' ? '€' : '$';
+            const costStr = s.actualMonthly > 0
+              ? `${sym}${s.actualMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} actual`
+              : s.estMonthly > 0
+                ? `${sym}${s.estMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo est.`
+                : 'no billing data';
+            return (
+              <Link key={p} href={`/dashboard/instances?view=${p}`} className={styles.providerCard}>
+                <div className={styles.providerCardHeader}>
+                  <span className={`${styles.providerBadge} ${badgeClass}`}>{p}</span>
+                  {s.running > 0 && (
+                    <span className={styles.providerRunning}>
+                      <span className={styles.providerRunningDot} />
+                      {s.running} running
+                    </span>
+                  )}
+                </div>
+                <div className={styles.providerCardBody}>
+                  <div className={styles.providerTotal}>
+                    {s.instances} <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--muted)' }}>instance{s.instances !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className={styles.providerCost}>{costStr}</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Row 2: health signals ── */}
       {(longRunning > 0 || idleCandidates > 0 || domainsMapped > 0) && (
@@ -294,6 +335,45 @@ export default function DashboardPage() {
                 </div>
                 <span className={styles.breakdownCost}>{fmtMonthly(inst.monthly_cost)}</span>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Starred instances ── */}
+      {favorites.length > 0 && (
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>
+            ★ Starred
+            <Link href="/dashboard/instances?view=starred" style={{ fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginLeft: 10 }}>
+              View all →
+            </Link>
+          </h2>
+          <div className={styles.breakdown}>
+            {favorites.slice(0, 5).map((inst) => (
+              <Link
+                key={inst.id}
+                href="/dashboard/instances"
+                className={styles.breakdownRow}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}
+              >
+                <div className={styles.breakdownLeft}>
+                  <span className={styles.breakdownName}>{inst.name}</span>
+                  <span className={styles.breakdownMeta}>
+                    {inst.provider.toUpperCase()} · {inst.region}
+                    {inst.status && (
+                      <span style={{ marginLeft: 6, color: inst.status === 'RUNNING' ? 'var(--active)' : 'var(--muted)' }}>
+                        · {inst.status}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <span className={styles.breakdownCost}>
+                  {inst.estimated_monthly_cost
+                    ? `${inst.provider === 'hetzner' ? '€' : '$'}${parseFloat(inst.estimated_monthly_cost).toFixed(2)}/mo`
+                    : '—'}
+                </span>
+              </Link>
             ))}
           </div>
         </div>
