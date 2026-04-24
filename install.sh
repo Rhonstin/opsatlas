@@ -9,9 +9,8 @@ FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 EXPOSE_POSTGRES="${EXPOSE_POSTGRES:-false}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-FRONTEND_URL="${FRONTEND_URL:-}"
-API_URL="${API_URL:-}"
 PROXY_CONFIG="${PROXY_CONFIG:-none}"
+INSTALL_COMPOSE_FILE="compose.install.yml"
 
 TTY=""
 if [ -r /dev/tty ]; then
@@ -106,20 +105,50 @@ require_port() {
   fi
 }
 
-write_postgres_override() {
-  local override_file="compose.override.yml"
+# Derive FRONTEND_URL and NEXT_PUBLIC_API_URL from current DOMAIN + PROXY_CONFIG.
+# This is always recomputed so a stale .env never causes wrong API endpoints.
+derive_urls() {
+  if [ -n "$DOMAIN" ]; then
+    case "$DOMAIN" in
+      http://*|https://*) FRONTEND_URL="$DOMAIN" ;;
+      *) FRONTEND_URL="https://$DOMAIN" ;;
+    esac
+  else
+    FRONTEND_URL="http://localhost:$FRONTEND_PORT"
+  fi
+
+  # When a reverse proxy serves both frontend and backend on the same origin,
+  # the browser uses relative URLs (empty NEXT_PUBLIC_API_URL).
+  # The proxy routes /auth*, /connections*, etc. to the backend internally.
+  # Without a proxy the browser must reach the backend port directly.
+  if [ "$PROXY_CONFIG" != "none" ] && [ -n "$DOMAIN" ]; then
+    NEXT_PUBLIC_API_URL=""
+  else
+    NEXT_PUBLIC_API_URL="http://localhost:$BACKEND_PORT"
+  fi
+}
+
+write_install_compose() {
+  local override_file="$INSTALL_COMPOSE_FILE"
   local marker="# Managed by opsatlas install.sh"
 
-  if [ "$EXPOSE_POSTGRES" = "true" ]; then
-    cat > "$override_file" <<EOF
+  cat > "$override_file" <<EOF
 $marker
 services:
+  frontend:
+    ports:
+      - '${FRONTEND_PORT}:3000'
+  backend:
+    ports:
+      - '${BACKEND_PORT}:4000'
+EOF
+
+  if [ "$EXPOSE_POSTGRES" = "true" ]; then
+    cat >> "$override_file" <<EOF
   postgres:
     ports:
       - '127.0.0.1:${POSTGRES_PORT}:5432'
 EOF
-  elif [ -f "$override_file" ] && grep -qF "$marker" "$override_file"; then
-    rm -f "$override_file"
   fi
 }
 
@@ -167,6 +196,7 @@ $domain_host {
                 path /auto-update-policies*
                 path /billing*
                 path /config*
+                path /favorites*
         }
 
         handle @backend {
@@ -203,7 +233,7 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    location ~ ^/(auth|connections|sync|instances|dns-connections|dns-sync|dns/records|auto-update-policies|billing|config) {
+    location ~ ^/(auth|connections|sync|instances|dns-connections|dns-sync|dns/records|auto-update-policies|billing|config|favorites) {
         proxy_pass http://127.0.0.1:$BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -231,6 +261,8 @@ EOF
   esac
 }
 
+# ── Locate or clone the repo ──────────────────────────────────────────────────
+
 if ! docker compose version >/dev/null 2>&1; then
   echo "Docker Compose v2 is required: docker compose" >&2
   exit 1
@@ -255,6 +287,8 @@ fi
 
 cd "$APP_DIR"
 
+# ── First-run: collect config and write .env ──────────────────────────────────
+
 if [ ! -f .env ]; then
   prompt DOMAIN "Public domain for OpsAtlas (leave blank for localhost)" "$DOMAIN"
   prompt_choice PROXY_CONFIG "Generate reverse proxy config (none/caddy/nginx/both)" "$PROXY_CONFIG"
@@ -270,64 +304,60 @@ if [ ! -f .env ]; then
     require_port "POSTGRES_PORT" "$POSTGRES_PORT"
   fi
 
-  if [ -z "$FRONTEND_URL" ]; then
-    if [ -n "$DOMAIN" ]; then
-      case "$DOMAIN" in
-        http://*|https://*) FRONTEND_URL="$DOMAIN" ;;
-        *) FRONTEND_URL="https://$DOMAIN" ;;
-      esac
-    else
-      FRONTEND_URL="http://localhost:$FRONTEND_PORT"
-    fi
-  fi
-
-  if [ -z "$API_URL" ]; then
-    if [ -n "$DOMAIN" ]; then
-      API_URL="$FRONTEND_URL"
-    else
-      API_URL="http://localhost:$BACKEND_PORT"
-    fi
-  fi
-
   umask 077
   cat > .env <<EOF
 JWT_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 16)
-FRONTEND_URL=$FRONTEND_URL
-API_URL=$API_URL
 DOMAIN=$DOMAIN
 PROXY_CONFIG=$PROXY_CONFIG
 FRONTEND_PORT=$FRONTEND_PORT
 BACKEND_PORT=$BACKEND_PORT
+EXPOSE_POSTGRES=$EXPOSE_POSTGRES
+POSTGRES_PORT=$POSTGRES_PORT
 EOF
-
-  write_postgres_override
 fi
+
+# ── Load persisted config ─────────────────────────────────────────────────────
 
 set -a
 . ./.env
 set +a
 
-if [ -f compose.override.yml ] && grep -qF "# Managed by opsatlas install.sh" compose.override.yml; then
-  EXPOSE_POSTGRES="true"
-  POSTGRES_PORT="$(sed -n "s/.*127\.0\.0\.1:\([0-9][0-9]*\):5432.*/\1/p" compose.override.yml | head -n 1)"
-fi
+# ── Derive URLs (always recomputed — never cached in .env) ────────────────────
+# This ensures a changed DOMAIN or PROXY_CONFIG is always picked up on re-run,
+# and prevents stale localhost URLs from being baked into the frontend image.
 
+derive_urls
+
+# ── Write compose override and proxy config ───────────────────────────────────
+
+write_install_compose
 write_proxy_configs
 
-docker compose pull
-docker compose up -d
-docker compose exec -T backend npm run migrate:prod
+# ── Build, start, migrate ─────────────────────────────────────────────────────
 
+NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+FRONTEND_URL="$FRONTEND_URL" \
+  docker compose -f docker-compose.yml -f "$INSTALL_COMPOSE_FILE" build
+
+docker compose -f docker-compose.yml -f "$INSTALL_COMPOSE_FILE" up -d
+docker compose -f docker-compose.yml -f "$INSTALL_COMPOSE_FILE" exec -T backend npm run migrate:prod
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+
+echo ""
 echo "opsatlas is running at $FRONTEND_URL"
 if [ "$EXPOSE_POSTGRES" = "true" ]; then
   echo "PostgreSQL is exposed on 127.0.0.1:$POSTGRES_PORT"
 else
   echo "PostgreSQL is not exposed on the host"
 fi
+echo ""
+echo "Installer-managed compose override: $APP_DIR/$INSTALL_COMPOSE_FILE"
 case "$PROXY_CONFIG" in
   caddy)
     echo "Generated Caddy config: $APP_DIR/deploy/proxy/opsatlas.Caddyfile"
+    echo "Reload Caddy: sudo caddy reload --config /etc/caddy/Caddyfile"
     ;;
   nginx)
     echo "Generated Nginx config: $APP_DIR/deploy/proxy/opsatlas.nginx.conf"

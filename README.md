@@ -48,82 +48,57 @@ curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh |
 ```
 
 The installer asks for:
-- Public domain for the UI, if you are putting OpsAtlas behind Caddy/Nginx
+- Public domain for the UI (if you are putting OpsAtlas behind Caddy or Nginx)
 - Whether to generate a Caddy config, Nginx config, both, or neither
 - Host ports for the frontend and backend containers
-- Whether PostgreSQL should be exposed on the host at all
+- Whether PostgreSQL should be exposed on the host
 
 When selected, the installer writes managed reverse proxy configs to:
 - `deploy/proxy/opsatlas.Caddyfile`
 - `deploy/proxy/opsatlas.nginx.conf`
 
-Override defaults on the `bash` side of the pipeline:
+The installer also writes a managed Compose override with the exact chosen ports:
+- `compose.install.yml`
+
+Pass variables on the `bash` side of the pipeline to skip prompts:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | INSTALL_DIR=/opt/opsatlas bash
+curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | \
+  INSTALL_DIR=/opt/opsatlas \
+  DOMAIN=opsatlas.example.com \
+  PROXY_CONFIG=caddy \
+  FRONTEND_PORT=3000 \
+  BACKEND_PORT=4000 \
+  bash
 ```
 
-To install from a non-default Git ref, set `REPO_REF` on the `bash` side too:
+### Manual Docker build
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/feature/install/install.sh | REPO_REF=feature/install bash
-```
-
-### Docker images (recommended)
+The installer is the recommended path, but you can also run it yourself:
 
 ```bash
 git clone https://github.com/Rhonstin/opsatlas
 cd opsatlas
-
-cat > .env <<EOF
-JWT_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 16)
-FRONTEND_URL=http://localhost:3000
-API_URL=http://localhost:4000
-EOF
-
-docker compose pull
-docker compose up -d
-docker compose exec -T backend npm run migrate:prod
+bash install.sh
 ```
 
-Open http://localhost:3000
-
-PostgreSQL is not published on the host by default in `docker-compose.yml`. The installer can generate a local `compose.override.yml` if you explicitly choose to expose it.
-
-The default `docker-compose.yml` uses published GitHub Container Registry images:
-
-| Service | Image |
-|---|---|
-| Backend | `ghcr.io/rhonstin/opsatlas/backend:main` |
-| Frontend | `ghcr.io/rhonstin/opsatlas/frontend:main` |
-
-Images are built by `.github/workflows/containers.yml` on pull requests, pushes to `main`, and `v*` tags. Pull requests build only; `main` and tag builds publish to GHCR.
-
-### Local Docker builds
-
-Use `compose.dev.yml` when you want Docker Compose to build images from the local source tree:
+Or with pre-set values to skip prompts:
 
 ```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env if you are running backend outside Compose
-
-cat > .env <<EOF
-JWT_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 16)
-FRONTEND_URL=http://localhost:3000
-API_URL=http://localhost:4000
-EOF
-
-docker compose -f compose.dev.yml up -d --build
-docker compose -f compose.dev.yml exec -T backend npm run migrate:prod
+DOMAIN=opsatlas.example.com PROXY_CONFIG=caddy \
+  FRONTEND_PORT=3000 BACKEND_PORT=4000 \
+  bash install.sh
 ```
+
+`docker-compose.yml` always builds images from source. Port bindings are written to the installer-managed `compose.install.yml` overlay.
+
+PostgreSQL is not published on the host by default.
 
 ### Local development
 
 ```bash
-# 1. Postgres
-docker compose -f compose.dev.yml up -d postgres
+# 1. Postgres only
+docker compose up -d postgres
 
 # 2. Backend
 cd backend
