@@ -15,6 +15,10 @@ export default function LoginPage() {
   const [authentik, setAuthentik] = useState<{ enabled: boolean; url?: string; clientId?: string } | null>(null);
   const [allowRegistrations, setAllowRegistrations] = useState(true);
 
+  // MFA second-step state
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+
   useEffect(() => {
     api.getAuthProviders()
       .then((p) => setAuthentik(p.authentik))
@@ -56,13 +60,77 @@ export default function LoginPage() {
       const res = mode === 'login'
         ? await api.login(email, password)
         : await api.register(email, password);
-      saveAuth(res.token, res.user);
+
+      if ('mfa_required' in res && res.mfa_required) {
+        setMfaToken(res.mfa_token);
+        setMfaCode('');
+        return;
+      }
+
+      const authRes = res as { token: string; user: { id: string; email: string } };
+      saveAuth(authRes.token, authRes.user);
       router.push('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.confirmMfa(mfaToken!, mfaCode);
+      saveAuth(res.token, res.user);
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // MFA confirmation step
+  if (mfaToken) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.box}>
+          <div className={styles.logo}>opsatlas</div>
+          <p className={styles.tagline}>Two-factor authentication</p>
+          <form onSubmit={handleMfaSubmit} className={styles.form}>
+            <div className={styles.field}>
+              <label>Authenticator code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                required
+                autoFocus
+                autoComplete="one-time-code"
+                style={{ letterSpacing: '0.2em', fontSize: 22, textAlign: 'center' }}
+              />
+            </div>
+            {error && <p className="error-msg">{error}</p>}
+            <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={loading || mfaCode.length !== 6}>
+              {loading ? 'Verifying…' : 'Verify'}
+            </button>
+            <button
+              type="button"
+              style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13 }}
+              onClick={() => { setMfaToken(null); setError(''); }}
+            >
+              Back to sign in
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (

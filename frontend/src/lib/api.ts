@@ -42,7 +42,7 @@ export const api = {
     }),
 
   login: (email: string, password: string) =>
-    request<{ token: string; user: { id: string; email: string } }>('/auth/login', {
+    request<{ token: string; user: { id: string; email: string } } | { mfa_required: true; mfa_token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
@@ -67,6 +67,31 @@ export const api = {
     request<{ ok: boolean }>('/auth/config', {
       method: 'PUT',
       body: JSON.stringify({ preferredCurrency: currency }),
+    }),
+
+  // MFA
+  getMfaStatus: () =>
+    request<{ mfa_enabled: boolean }>('/auth/mfa/status'),
+
+  setupMfa: () =>
+    request<{ secret: string; otpauth_url: string; qr_data_url: string }>('/auth/mfa/setup'),
+
+  verifyMfaSetup: (code: string) =>
+    request<{ ok: boolean }>('/auth/mfa/verify-setup', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  disableMfa: (code: string) =>
+    request<{ ok: boolean }>('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  confirmMfa: (mfa_token: string, code: string) =>
+    request<{ token: string; user: { id: string; email: string } }>('/auth/mfa/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ mfa_token, code }),
     }),
 
   authentikCallback: (code: string, redirectUri: string) =>

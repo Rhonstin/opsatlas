@@ -21,7 +21,7 @@ export async function getRate(from: string, to: string): Promise<number> {
   if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached.rate;
 
   try {
-    const res = await fetch(`https://api.frankfurter.app/latest?from=${fromU}&to=${toU}`);
+    const res = await fetch(`https://api.frankfurter.dev/v1/latest?from=${fromU}&to=${toU}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { rates: Record<string, number> };
     const rate = data.rates[toU];

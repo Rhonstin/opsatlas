@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import speakeasy from 'speakeasy';
+import qrcode from 'qrcode';
 import db from '../db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 
@@ -92,8 +94,145 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
+  // If MFA is enabled, issue a short-lived MFA challenge token instead of a session token
+  if (user.mfa_enabled) {
+    const mfaToken = issueMfaToken(user.id);
+    res.json({ mfa_required: true, mfa_token: mfaToken });
+    return;
+  }
+
   const token = issueToken(user.id);
   res.json({ token, user: { id: user.id, email: user.email } });
+});
+
+// ── MFA routes ────────────────────────────────────────────────────────────────
+
+/**
+ * POST /auth/mfa/confirm
+ * Exchange a short-lived MFA token + TOTP code for a full session token.
+ * Body: { mfa_token: string, code: string }
+ */
+router.post('/mfa/confirm', async (req: Request, res: Response) => {
+  const { mfa_token, code } = req.body as { mfa_token?: string; code?: string };
+  if (!mfa_token || !code) {
+    res.status(400).json({ error: 'mfa_token and code are required' });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) { res.status(500).json({ error: 'Server misconfigured' }); return; }
+
+  let payload: { userId: string; mfa: true };
+  try {
+    payload = jwt.verify(mfa_token, secret) as { userId: string; mfa: true };
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired MFA token' });
+    return;
+  }
+
+  if (!payload.mfa) {
+    res.status(401).json({ error: 'Invalid MFA token' });
+    return;
+  }
+
+  const user = await db('users').where({ id: payload.userId }).first();
+  if (!user || !user.mfa_secret || !user.mfa_enabled) {
+    res.status(401).json({ error: 'MFA not configured' });
+    return;
+  }
+
+  const valid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: code, window: 1 });
+  if (!valid) {
+    res.status(401).json({ error: 'Invalid authenticator code' });
+    return;
+  }
+
+  const token = issueToken(user.id);
+  res.json({ token, user: { id: user.id, email: user.email } });
+});
+
+/**
+ * GET /auth/mfa/setup
+ * Generate a new TOTP secret and return the otpauth URI + QR code data URL.
+ * Requires auth. Does NOT enable MFA yet — call /mfa/verify-setup to confirm.
+ */
+router.get('/mfa/setup', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const user = await db('users').where({ id: req.userId }).first();
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  const generated = speakeasy.generateSecret({ name: `OpsAtlas (${user.email})`, length: 20 });
+  const secretBase32 = generated.base32;
+
+  // Store the pending secret (not yet enabled)
+  await db('users').where({ id: req.userId }).update({ mfa_secret: secretBase32, mfa_enabled: false });
+
+  const otpauthUrl = generated.otpauth_url ?? speakeasy.otpauthURL({ secret: secretBase32, label: user.email, issuer: 'OpsAtlas', encoding: 'base32' });
+  const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
+  res.json({ secret: secretBase32, otpauth_url: otpauthUrl, qr_data_url: qrDataUrl });
+});
+
+/**
+ * POST /auth/mfa/verify-setup
+ * Verify the TOTP code from the authenticator app and enable MFA.
+ * Requires auth. Body: { code: string }
+ */
+router.post('/mfa/verify-setup', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const { code } = req.body as { code?: string };
+  if (!code) { res.status(400).json({ error: 'code is required' }); return; }
+
+  const user = await db('users').where({ id: req.userId }).first();
+  if (!user || !user.mfa_secret) {
+    res.status(400).json({ error: 'Call /mfa/setup first' });
+    return;
+  }
+  if (user.mfa_enabled) {
+    res.status(400).json({ error: 'MFA is already enabled' });
+    return;
+  }
+
+  const valid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: code, window: 1 });
+  if (!valid) {
+    res.status(400).json({ error: 'Invalid authenticator code' });
+    return;
+  }
+
+  await db('users').where({ id: req.userId }).update({ mfa_enabled: true });
+  res.json({ ok: true });
+});
+
+/**
+ * POST /auth/mfa/disable
+ * Disable MFA. Requires auth + current TOTP code (or password for SSO accounts).
+ * Body: { code: string }
+ */
+router.post('/mfa/disable', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const { code } = req.body as { code?: string };
+  if (!code) { res.status(400).json({ error: 'code is required' }); return; }
+
+  const user = await db('users').where({ id: req.userId }).first();
+  if (!user || !user.mfa_enabled || !user.mfa_secret) {
+    res.status(400).json({ error: 'MFA is not enabled' });
+    return;
+  }
+
+  const valid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: code, window: 1 });
+  if (!valid) {
+    res.status(400).json({ error: 'Invalid authenticator code' });
+    return;
+  }
+
+  await db('users').where({ id: req.userId }).update({ mfa_enabled: false, mfa_secret: null });
+  res.json({ ok: true });
+});
+
+/**
+ * GET /auth/mfa/status
+ * Returns whether MFA is enabled for the current user.
+ */
+router.get('/mfa/status', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const user = await db('users').where({ id: req.userId }).first();
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+  res.json({ mfa_enabled: !!user.mfa_enabled });
 });
 
 // ── SSO ───────────────────────────────────────────────────────────────────────
@@ -280,6 +419,13 @@ function issueToken(userId: string): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET not set');
   return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+}
+
+/** Short-lived token used during MFA challenge (5 minutes). */
+function issueMfaToken(userId: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET not set');
+  return jwt.sign({ userId, mfa: true }, secret, { expiresIn: '5m' });
 }
 
 export default router;

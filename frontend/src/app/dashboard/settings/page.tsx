@@ -16,7 +16,7 @@ import dnsStyles from '../dns/dns.module.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'config';
+type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'config' | 'security';
 
 // ─── Connections Tab ──────────────────────────────────────────────────────────
 
@@ -609,6 +609,197 @@ function SsoTab() {
   );
 }
 
+// ─── Security Tab (MFA) ───────────────────────────────────────────────────────
+
+type MfaStep = 'idle' | 'setup' | 'verifying' | 'disabling';
+
+function SecurityTab() {
+  const { toast } = useToast();
+  const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [step, setStep] = useState<MfaStep>('idle');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [secret, setSecret] = useState('');
+  const [code, setCode] = useState('');
+  const [working, setWorking] = useState(false);
+  const [codeError, setCodeError] = useState('');
+
+  useEffect(() => {
+    api.getMfaStatus()
+      .then((r) => setMfaEnabled(r.mfa_enabled))
+      .catch(() => setMfaEnabled(false));
+  }, []);
+
+  async function handleSetup() {
+    setWorking(true);
+    setCodeError('');
+    try {
+      const res = await api.setupMfa();
+      setSecret(res.secret);
+      setQrDataUrl(res.qr_data_url);
+      setCode('');
+      setStep('setup');
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Setup failed');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setCodeError('');
+    setWorking(true);
+    try {
+      await api.verifyMfaSetup(code);
+      setMfaEnabled(true);
+      setStep('idle');
+      toast('success', 'Two-factor authentication enabled');
+    } catch (err: unknown) {
+      setCodeError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleDisable(e: React.FormEvent) {
+    e.preventDefault();
+    setCodeError('');
+    setWorking(true);
+    try {
+      await api.disableMfa(code);
+      setMfaEnabled(false);
+      setStep('idle');
+      toast('success', 'Two-factor authentication disabled');
+    } catch (err: unknown) {
+      setCodeError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function cancelSetup() {
+    setStep('idle');
+    setCode('');
+    setCodeError('');
+    setQrDataUrl('');
+    setSecret('');
+  }
+
+  return (
+    <section>
+      <div className={styles.sectionHeader}>
+        <div>
+          <div className={styles.sectionTitle}>Security</div>
+          <div className={styles.sectionDesc}>Two-factor authentication and account security settings</div>
+        </div>
+      </div>
+
+      <div className={styles.card}>
+        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          Two-factor authentication
+          {mfaEnabled !== null && (
+            <span className={`badge ${mfaEnabled ? 'badge-active' : 'badge-pending'}`}>
+              {mfaEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          )}
+        </div>
+        <div className={styles.cardDesc}>
+          Use an authenticator app (Google Authenticator, Authy, 1Password, etc.) to generate time-based one-time codes.
+        </div>
+
+        {step === 'idle' && mfaEnabled !== null && (
+          <div style={{ marginTop: 16 }}>
+            {mfaEnabled ? (
+              <button className="btn-danger" style={{ fontSize: 13 }} onClick={() => { setStep('disabling'); setCode(''); setCodeError(''); }}>
+                Disable MFA
+              </button>
+            ) : (
+              <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSetup} disabled={working}>
+                {working ? 'Setting up…' : 'Set up MFA'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {step === 'setup' && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+              Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.
+            </div>
+            {qrDataUrl && (
+              <div style={{ marginBottom: 16, display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <img src={qrDataUrl} alt="TOTP QR code" style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Or enter the key manually:</div>
+                  <code style={{ fontSize: 13, letterSpacing: '0.1em', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
+                    {secret}
+                  </code>
+                </div>
+              </div>
+            )}
+            <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+              <div className={styles.ssoField}>
+                <label className={styles.ssoFieldLabel}>Authenticator code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  autoFocus
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  autoComplete="one-time-code"
+                />
+              </div>
+              {codeError && <div className={styles.error}>{codeError}</div>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-ghost" onClick={cancelSetup}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={working || code.length !== 6}>
+                  {working ? 'Verifying…' : 'Enable MFA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {step === 'disabling' && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+              Enter your current authenticator code to disable MFA.
+            </div>
+            <form onSubmit={handleDisable} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+              <div className={styles.ssoField}>
+                <label className={styles.ssoFieldLabel}>Authenticator code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  autoFocus
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  autoComplete="one-time-code"
+                />
+              </div>
+              {codeError && <div className={styles.error}>{codeError}</div>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-ghost" onClick={() => { setStep('idle'); setCode(''); setCodeError(''); }}>Cancel</button>
+                <button type="submit" className="btn-danger" disabled={working || code.length !== 6}>
+                  {working ? 'Disabling…' : 'Disable MFA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
 const CURRENCIES = [
@@ -975,6 +1166,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'dns', label: 'DNS' },
   { id: 'billing', label: 'Billing' },
   { id: 'sso', label: 'SSO' },
+  { id: 'security', label: 'Security' },
   { id: 'config', label: 'Config' },
 ];
 
@@ -1009,6 +1201,7 @@ function SettingsContent() {
         {tab === 'dns' && <DnsTab />}
         {tab === 'billing' && <BillingTab />}
         {tab === 'sso' && <SsoTab />}
+        {tab === 'security' && <SecurityTab />}
         {tab === 'config' && <ConfigTab />}
       </div>
     </div>
