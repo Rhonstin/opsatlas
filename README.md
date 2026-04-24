@@ -63,6 +63,12 @@ Override defaults on the `bash` side of the pipeline:
 curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | INSTALL_DIR=/opt/opsatlas bash
 ```
 
+To install from a non-default Git ref, set `REPO_REF` on the `bash` side too:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/feature/install/install.sh | REPO_REF=feature/install bash
+```
+
 ### Docker images (recommended)
 
 ```bash

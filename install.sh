@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Rhonstin/opsatlas.git}"
+REPO_REF="${REPO_REF:-main}"
 INSTALL_DIR="${INSTALL_DIR:-opsatlas}"
 DOMAIN="${DOMAIN:-}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
@@ -241,12 +242,13 @@ else
   need git
   if [ -d "$INSTALL_DIR/.git" ]; then
     APP_DIR="$INSTALL_DIR"
-    git -C "$APP_DIR" pull --ff-only
+    git -C "$APP_DIR" fetch origin "$REPO_REF"
+    git -C "$APP_DIR" checkout -B "$REPO_REF" "origin/$REPO_REF"
   elif [ -e "$INSTALL_DIR" ]; then
     echo "Install directory exists but is not a git checkout: $INSTALL_DIR" >&2
     exit 1
   else
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    git clone --branch "$REPO_REF" --single-branch "$REPO_URL" "$INSTALL_DIR"
     APP_DIR="$INSTALL_DIR"
   fi
 fi
