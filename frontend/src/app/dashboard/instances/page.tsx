@@ -23,18 +23,23 @@ function statusClass(s: string): string {
   return STATUS_BADGE[s.toUpperCase()] ?? 'badge-pending';
 }
 
-function currencySymbol(provider: string): string {
-  return provider === 'hetzner' ? '€' : '$';
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', SGD: 'S$',
+  AUD: 'A$', CAD: 'CA$', HKD: 'HK$', INR: '₹', CHF: 'Fr',
+};
+
+function currencySymbol(currency: string): string {
+  return CURRENCY_SYMBOLS[currency] ?? currency;
 }
 
-function fmt(n: string | null, provider = ''): string {
+function fmt(n: string | null, currency = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(provider)}${parseFloat(n).toFixed(4)}/hr`;
+  return `${currencySymbol(currency)}${parseFloat(n).toFixed(4)}/hr`;
 }
 
-function fmtMonthly(n: string | null, provider = ''): string {
+function fmtMonthly(n: string | null, currency = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(provider)}${parseFloat(n).toFixed(2)}/mo`;
+  return `${currencySymbol(currency)}${parseFloat(n).toFixed(2)}/mo`;
 }
 
 function fmtUptime(hours: number | null): string {
@@ -77,6 +82,7 @@ function InstancesPageInner() {
   const [instances, setInstances] = useState<InstanceWithDns[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [displayCurrency, setDisplayCurrency] = useState('USD');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterResourceType, setFilterResourceType] = useState('');
   const [search, setSearch] = useState('');
@@ -124,6 +130,12 @@ function InstancesPageInner() {
   }
 
   useEffect(() => { fetchInstances(); }, [filterStatus, filterResourceType]);
+
+  useEffect(() => {
+    api.getServerConfig()
+      .then((cfg) => setDisplayCurrency(cfg.preferredCurrency ?? 'USD'))
+      .catch(() => { /* non-fatal, keep default USD */ });
+  }, []);
 
   const totalMonthlyCost = instances.reduce(
     (sum, i) => sum + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0),
@@ -270,16 +282,16 @@ function InstancesPageInner() {
                 )}
               </div>
               <div>
-                <div>{fmtMonthly(inst.estimated_monthly_cost, inst.provider)}</div>
+                <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
                 {inst.status === 'RUNNING'
-                  ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, inst.provider)}</div>
+                  ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, displayCurrency)}</div>
                   : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
                     ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
                     : null
                 }
                 {inst.status === 'RUNNING' && (
                   <div className={styles.costToDate}>
-                    {currencySymbol(inst.provider)}{calcCostToDate(inst).toFixed(2)} this mo
+                    {currencySymbol(displayCurrency)}{calcCostToDate(inst).toFixed(2)} this mo
                   </div>
                 )}
               </div>

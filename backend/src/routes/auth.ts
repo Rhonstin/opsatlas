@@ -9,19 +9,28 @@ const SALT_ROUNDS = 12;
 
 /** GET /auth/config — public endpoint, returns server feature flags */
 router.get('/config', async (_req: Request, res: Response) => {
-  const row = await db('app_settings').where({ key: 'allow_registrations' }).first().catch(() => null);
-  const allowRegistrations = !row || row.value !== 'false';
-  res.json({ allowRegistrations });
+  const rows = await db('app_settings')
+    .whereIn('key', ['allow_registrations', 'preferred_currency'])
+    .select('key', 'value')
+    .catch(() => [] as { key: string; value: string }[]);
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const allowRegistrations = map['allow_registrations'] !== 'false';
+  const preferredCurrency = map['preferred_currency'] ?? 'USD';
+  res.json({ allowRegistrations, preferredCurrency });
 });
 
 /** PUT /auth/config — update server config. Requires auth. */
 router.put('/config', authenticateToken, async (req: AuthRequest, res: Response) => {
-  const { allowRegistrations } = req.body as { allowRegistrations?: boolean };
+  const { allowRegistrations, preferredCurrency } = req.body as { allowRegistrations?: boolean; preferredCurrency?: string };
   if (typeof allowRegistrations === 'boolean') {
     await db('app_settings')
       .insert({ key: 'allow_registrations', value: String(allowRegistrations) })
-      .onConflict('key')
-      .merge();
+      .onConflict('key').merge(['value']);
+  }
+  if (typeof preferredCurrency === 'string' && /^[A-Z]{3}$/.test(preferredCurrency)) {
+    await db('app_settings')
+      .insert({ key: 'preferred_currency', value: preferredCurrency })
+      .onConflict('key').merge(['value']);
   }
   res.json({ ok: true });
 });

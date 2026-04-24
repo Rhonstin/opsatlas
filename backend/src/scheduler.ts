@@ -12,6 +12,7 @@ import { listAwsInstances } from './aws/ec2';
 import { listCloudSqlInstances } from './gcp/cloudsql';
 import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
 import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
+import { getRate, convert } from './lib/exchange-rates';
 
 const TICK_MS = 60_000;
 
@@ -60,8 +61,10 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
     let totalDnsRecords = 0;
     let totalCostRows = 0;
 
+    const preferredCurrency = await getPreferredCurrency();
+
     for (const conn of connections) {
-      if (policy.sync_instances) totalInstances += await syncInstances(conn);
+      if (policy.sync_instances) totalInstances += await syncInstances(conn, preferredCurrency);
       if (policy.sync_dns) totalDnsRecords += await syncDns(conn);
     }
 
@@ -128,6 +131,11 @@ function nextRunAt(intervalMinutes: number, extraMs = 0): Date {
   return new Date(Date.now() + intervalMinutes * 60_000 + extraMs);
 }
 
+async function getPreferredCurrency(): Promise<string> {
+  const row = await db('app_settings').where({ key: 'preferred_currency' }).first().catch(() => null);
+  return row?.value ?? 'USD';
+}
+
 async function getTargetConnections(policy: Record<string, unknown>): Promise<Record<string, unknown>[]> {
   const q = db('cloud_connections');
 
@@ -143,16 +151,29 @@ async function getTargetConnections(policy: Record<string, unknown>): Promise<Re
   return q.select('*');
 }
 
-async function syncInstances(conn: Record<string, unknown>): Promise<number> {
+async function syncInstances(conn: Record<string, unknown>, preferredCurrency: string): Promise<number> {
   const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
   let count = 0;
 
   if (conn.provider === 'gcp') {
     let priceCache: Map<string, number> | undefined;
+    let sourceCurrency = 'USD';
     try {
-      if (await isCacheStale(db)) await refreshBillingCache(credentials, db);
+      if (await isCacheStale(db)) {
+        const result = await refreshBillingCache(credentials, db);
+        sourceCurrency = result.currency;
+        // Persist detected currency so we can use it when cache is fresh
+        await db('app_settings')
+          .insert({ key: 'billing_price_currency', value: sourceCurrency })
+          .onConflict('key').merge(['value']);
+      } else {
+        const row = await db('app_settings').where({ key: 'billing_price_currency' }).first().catch(() => null);
+        sourceCurrency = row?.value ?? 'USD';
+      }
       priceCache = await loadPriceCache(db);
     } catch { /* non-fatal */ }
+
+    const rate = await getRate(sourceCurrency, preferredCurrency);
 
     const savedProjects = await db('projects_or_accounts')
       .where({ connection_id: conn.id })
@@ -166,7 +187,14 @@ async function syncInstances(conn: Record<string, unknown>): Promise<number> {
       try {
         const instances = await listGcpInstances(project.externalId as string, credentials, priceCache);
         for (const inst of instances) {
-          await upsertInstanceRow({ ...inst, provider: 'gcp', connectionId: conn.id as string, projectId: project.id as string | null });
+          await upsertInstanceRow({
+            ...inst,
+            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+            provider: 'gcp',
+            connectionId: conn.id as string,
+            projectId: project.id as string | null,
+          });
           count++;
         }
       } catch (err: unknown) {
@@ -179,7 +207,15 @@ async function syncInstances(conn: Record<string, unknown>): Promise<number> {
       try {
         const sqlInstances = await listCloudSqlInstances(project.externalId as string, credentials);
         for (const inst of sqlInstances) {
-          await upsertInstanceRow({ ...inst, provider: 'gcp', resourceType: 'cloudsql', connectionId: conn.id as string, projectId: project.id as string | null });
+          await upsertInstanceRow({
+            ...inst,
+            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+            provider: 'gcp',
+            resourceType: 'cloudsql',
+            connectionId: conn.id as string,
+            projectId: project.id as string | null,
+          });
           count++;
         }
       } catch (err: unknown) {
@@ -188,15 +224,31 @@ async function syncInstances(conn: Record<string, unknown>): Promise<number> {
       }
     }
   } else if (conn.provider === 'hetzner') {
+    const rate = await getRate('EUR', preferredCurrency);
     const servers = await listHetznerServers(credentials.token as string);
     for (const inst of servers) {
-      await upsertInstanceRow({ ...inst, provider: 'hetzner', connectionId: conn.id as string, projectId: null });
+      await upsertInstanceRow({
+        ...inst,
+        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+        provider: 'hetzner',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
       count++;
     }
   } else if (conn.provider === 'aws') {
+    const rate = await getRate('USD', preferredCurrency);
     const instances = await listAwsInstances(credentials);
     for (const inst of instances) {
-      await upsertInstanceRow({ ...inst, provider: 'aws', connectionId: conn.id as string, projectId: null });
+      await upsertInstanceRow({
+        ...inst,
+        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+        provider: 'aws',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
       count++;
     }
   }

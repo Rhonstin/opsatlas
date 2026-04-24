@@ -55,12 +55,18 @@ export const api = {
 
   getServerConfig: () =>
     fetch(`${BASE}/auth/config`)
-      .then((r) => r.json()) as Promise<{ allowRegistrations: boolean }>,
+      .then((r) => r.json()) as Promise<{ allowRegistrations: boolean; preferredCurrency: string }>,
 
   setAllowRegistrations: (allow: boolean) =>
     request<{ ok: boolean }>('/auth/config', {
       method: 'PUT',
       body: JSON.stringify({ allowRegistrations: allow }),
+    }),
+
+  setPreferredCurrency: (currency: string) =>
+    request<{ ok: boolean }>('/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ preferredCurrency: currency }),
     }),
 
   authentikCallback: (code: string, redirectUri: string) =>

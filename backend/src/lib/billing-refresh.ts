@@ -6,6 +6,7 @@ import { decrypt } from './crypto';
 import { fetchGcpBillingActuals } from '../gcp/billing-actuals';
 import { fetchAwsCostActuals } from '../aws/cost-explorer';
 import { fetchHetznerBillingActuals } from '../hetzner/billing';
+import { getRate, convert } from './exchange-rates';
 
 export interface BillingRefreshRowResult {
   connection_id: string;
@@ -47,6 +48,11 @@ export async function runBillingForConnections(
 ): Promise<BillingRefreshRowResult[]> {
   const results: BillingRefreshRowResult[] = [];
 
+  // Load preferred currency once for all connections
+  const preferredCurrency = await db('app_settings')
+    .where({ key: 'preferred_currency' }).first().catch(() => null)
+    .then((r) => r?.value ?? 'USD');
+
   for (const conn of connections) {
     if (!['gcp', 'aws', 'hetzner'].includes(conn.provider as string)) continue;
 
@@ -80,6 +86,8 @@ export async function runBillingForConnections(
       }
 
       for (const row of rows) {
+        const rate = await getRate(row.currency, preferredCurrency);
+        const convertedAmount = convert(row.amount_usd, rate);
         await db('billing_actuals')
           .insert({
             connection_id: conn.id,
@@ -88,8 +96,8 @@ export async function runBillingForConnections(
             project_id: row.project_id,
             project_name: row.project_name,
             service: row.service,
-            amount_usd: row.amount_usd,
-            currency: row.currency,
+            amount_usd: convertedAmount,
+            currency: preferredCurrency,
             fetched_at: new Date(),
           })
           .onConflict(['connection_id', 'period', 'project_id', 'service'])

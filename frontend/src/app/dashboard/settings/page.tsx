@@ -611,10 +611,27 @@ function SsoTab() {
 
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
+const CURRENCIES = [
+  { code: 'USD', label: 'USD — US Dollar ($)' },
+  { code: 'EUR', label: 'EUR — Euro (€)' },
+  { code: 'SGD', label: 'SGD — Singapore Dollar (S$)' },
+  { code: 'GBP', label: 'GBP — British Pound (£)' },
+  { code: 'AUD', label: 'AUD — Australian Dollar (A$)' },
+  { code: 'CAD', label: 'CAD — Canadian Dollar (CA$)' },
+  { code: 'JPY', label: 'JPY — Japanese Yen (¥)' },
+  { code: 'INR', label: 'INR — Indian Rupee (₹)' },
+  { code: 'HKD', label: 'HKD — Hong Kong Dollar (HK$)' },
+  { code: 'CHF', label: 'CHF — Swiss Franc (Fr)' },
+];
+
 function ConfigTab() {
   const { toast } = useToast();
   const [allowRegistrations, setAllowRegistrations] = useState<boolean | null>(null);
   const [togglingReg, setTogglingReg] = useState(false);
+
+  // Currency state
+  const [preferredCurrency, setPreferredCurrency] = useState('USD');
+  const [savingCurrency, setSavingCurrency] = useState(false);
 
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -633,9 +650,24 @@ function ConfigTab() {
 
   useEffect(() => {
     api.getServerConfig()
-      .then((cfg) => setAllowRegistrations(cfg.allowRegistrations ?? true))
+      .then((cfg) => {
+        setAllowRegistrations(cfg.allowRegistrations ?? true);
+        setPreferredCurrency(cfg.preferredCurrency ?? 'USD');
+      })
       .catch(() => setAllowRegistrations(true));
   }, []);
+
+  async function handleSaveCurrency() {
+    setSavingCurrency(true);
+    try {
+      await api.setPreferredCurrency(preferredCurrency);
+      toast('success', `Currency set to ${preferredCurrency} — re-sync connections to apply`);
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Failed to save currency');
+    } finally {
+      setSavingCurrency(false);
+    }
+  }
 
   async function handleToggleRegistrations() {
     if (allowRegistrations === null) return;
@@ -825,6 +857,31 @@ function ConfigTab() {
             {allowRegistrations ? 'Registrations are open' : 'Registrations are closed — SSO or invite only'}
           </div>
         )}
+      </div>
+
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <div className={styles.cardTitle}>Display currency</div>
+            <div className={styles.cardDesc}>
+              All estimated costs and billing actuals are converted to this currency during sync using live exchange rates (Frankfurter / ECB). Re-sync connections after changing.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <select
+              value={preferredCurrency}
+              onChange={(e) => setPreferredCurrency(e.target.value)}
+              style={{ width: 230 }}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+            <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSaveCurrency} disabled={savingCurrency}>
+              {savingCurrency ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className={styles.card}>
