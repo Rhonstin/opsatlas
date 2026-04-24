@@ -10,7 +10,6 @@ BACKEND_PORT="${BACKEND_PORT:-4000}"
 EXPOSE_POSTGRES="${EXPOSE_POSTGRES:-false}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 PROXY_CONFIG="${PROXY_CONFIG:-none}"
-INSTALL_COMPOSE_FILE="compose.install.yml"
 
 TTY=""
 if [ -r /dev/tty ]; then
@@ -287,6 +286,9 @@ fi
 
 cd "$APP_DIR"
 
+# Use absolute paths so curl|bash and re-runs both resolve correctly
+INSTALL_COMPOSE_FILE="$(pwd)/compose.install.yml"
+
 # ── First-run: collect config and write .env ──────────────────────────────────
 
 if [ ! -f .env ]; then
@@ -304,6 +306,7 @@ if [ ! -f .env ]; then
     require_port "POSTGRES_PORT" "$POSTGRES_PORT"
   fi
 
+  old_umask="$(umask)"
   umask 077
   cat > .env <<EOF
 JWT_SECRET=$(openssl rand -hex 32)
@@ -315,6 +318,7 @@ BACKEND_PORT=$BACKEND_PORT
 EXPOSE_POSTGRES=$EXPOSE_POSTGRES
 POSTGRES_PORT=$POSTGRES_PORT
 EOF
+  umask "$old_umask"
 fi
 
 # ── Load persisted config ─────────────────────────────────────────────────────
