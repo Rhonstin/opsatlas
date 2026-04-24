@@ -47,6 +47,16 @@
 curl -fsSL https://raw.githubusercontent.com/Rhonstin/opsatlas/main/install.sh | bash
 ```
 
+The installer asks for:
+- Public domain for the UI, if you are putting OpsAtlas behind Caddy/Nginx
+- Whether to generate a Caddy config, Nginx config, both, or neither
+- Host ports for the frontend and backend containers
+- Whether PostgreSQL should be exposed on the host at all
+
+When selected, the installer writes managed reverse proxy configs to:
+- `deploy/proxy/opsatlas.Caddyfile`
+- `deploy/proxy/opsatlas.nginx.conf`
+
 Override defaults on the `bash` side of the pipeline:
 
 ```bash
@@ -72,6 +82,8 @@ docker compose exec -T backend npm run migrate:prod
 ```
 
 Open http://localhost:3000
+
+PostgreSQL is not published on the host by default in `docker-compose.yml`. The installer can generate a local `compose.override.yml` if you explicitly choose to expose it.
 
 The default `docker-compose.yml` uses published GitHub Container Registry images:
 
