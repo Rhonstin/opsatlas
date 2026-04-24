@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Connection, DnsConnection, ConfigExport, ConfigImportResult } from '@/lib/api';
+import { encryptConfig, decryptConfig, isEncryptedEnvelope } from '@/lib/config-crypto';
 import { useSort } from '@/lib/useSort';
 import { useToast } from '@/lib/toast';
 import AddConnectionModal from '../connections/AddConnectionModal';
@@ -612,9 +613,23 @@ function SsoTab() {
 
 function ConfigTab() {
   const { toast } = useToast();
-  const [exporting, setExporting] = useState(false);
   const [allowRegistrations, setAllowRegistrations] = useState<boolean | null>(null);
   const [togglingReg, setTogglingReg] = useState(false);
+
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportPw, setExportPw] = useState('');
+  const [exportPwConfirm, setExportPwConfirm] = useState('');
+  const [exportPwError, setExportPwError] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  // Import state
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ConfigImportResult | null>(null);
+  const [importError, setImportError] = useState('');
+  const [pendingFile, setPendingFile] = useState<string | null>(null); // raw file text awaiting password
+  const [importPw, setImportPw] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.getServerConfig()
@@ -636,39 +651,90 @@ function ConfigTab() {
       setTogglingReg(false);
     }
   }
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ConfigImportResult | null>(null);
-  const [importError, setImportError] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  async function handleExport() {
+  // ── Export ──────────────────────────────────────────────────────────────────
+
+  function openExportModal() {
+    setExportPw('');
+    setExportPwConfirm('');
+    setExportPwError('');
+    setShowExportModal(true);
+  }
+
+  async function handleExport(e: React.FormEvent) {
+    e.preventDefault();
+    if (exportPw.length < 8) { setExportPwError('Password must be at least 8 characters'); return; }
+    if (exportPw !== exportPwConfirm) { setExportPwError('Passwords do not match'); return; }
+    setExportPwError('');
     setExporting(true);
     try {
       const data = await api.exportConfig();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const plaintext = JSON.stringify(data, null, 2);
+      const encrypted = await encryptConfig(plaintext, exportPw);
+      const blob = new Blob([encrypted], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `opsatlas-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `opsatlas-config-${new Date().toISOString().slice(0, 10)}.opsatlas`;
       a.click();
       URL.revokeObjectURL(url);
+      setShowExportModal(false);
+      toast('success', 'Config exported (AES-256-GCM encrypted)');
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Export failed');
+      setExportPwError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(false);
     }
   }
+
+  // ── Import ──────────────────────────────────────────────────────────────────
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportError('');
     setImportResult(null);
+    setImportPw('');
+
+    const text = await file.text();
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setImportError('Invalid file — not valid JSON'); return; }
+
+    if (isEncryptedEnvelope(parsed)) {
+      // Encrypted — need password before we can import
+      setPendingFile(text);
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
+    // Plain JSON (legacy) — import directly
+    setPendingFile(null);
+    await doImport(text);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  async function handleDecryptAndImport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pendingFile) return;
+    setImportError('');
     setImporting(true);
     try {
-      const text = await file.text();
+      const plaintext = await decryptConfig(pendingFile, importPw);
+      await doImport(plaintext);
+      setPendingFile(null);
+      setImportPw('');
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : 'Decryption failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function doImport(text: string) {
+    setImporting(true);
+    try {
       let parsed: ConfigExport;
-      try { parsed = JSON.parse(text) as ConfigExport; } catch { throw new Error('Invalid JSON file'); }
+      try { parsed = JSON.parse(text) as ConfigExport; } catch { throw new Error('Invalid JSON'); }
       if (!parsed.version || !Array.isArray(parsed.cloud_connections)) throw new Error('Not a valid opsatlas config file');
       const result = await api.importConfig(parsed);
       setImportResult(result);
@@ -676,7 +742,6 @@ function ConfigTab() {
       setImportError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setImporting(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -689,10 +754,52 @@ function ConfigTab() {
 
   return (
     <section>
+      {/* Export password modal */}
+      {showExportModal && (
+        <div className={styles.pwOverlay} onClick={(e) => e.target === e.currentTarget && setShowExportModal(false)}>
+          <div className={styles.pwModal}>
+            <div className={styles.pwTitle}>Export config</div>
+            <div className={styles.pwDesc}>
+              Set a password to encrypt the file with AES-256-GCM. You will need it to import the backup.
+            </div>
+            <form onSubmit={handleExport} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className={styles.pwField}>
+                <label className={styles.pwLabel}>Password</label>
+                <input
+                  type="password"
+                  className={styles.pwInput}
+                  value={exportPw}
+                  onChange={(e) => setExportPw(e.target.value)}
+                  placeholder="Min. 8 characters"
+                  autoFocus
+                />
+              </div>
+              <div className={styles.pwField}>
+                <label className={styles.pwLabel}>Confirm password</label>
+                <input
+                  type="password"
+                  className={styles.pwInput}
+                  value={exportPwConfirm}
+                  onChange={(e) => setExportPwConfirm(e.target.value)}
+                  placeholder="Repeat password"
+                />
+              </div>
+              {exportPwError && <div className={styles.pwError}>{exportPwError}</div>}
+              <div className={styles.pwActions}>
+                <button type="button" className="btn-ghost" onClick={() => setShowExportModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={exporting}>
+                  {exporting ? 'Encrypting…' : 'Export & Download'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className={styles.sectionHeader}>
         <div>
           <div className={styles.sectionTitle}>Configuration</div>
-          <div className={styles.sectionDesc}>Export or import all connections and policies as JSON</div>
+          <div className={styles.sectionDesc}>Export or import all connections and policies</div>
         </div>
       </div>
 
@@ -726,31 +833,60 @@ function ConfigTab() {
             <div className={styles.cardTitle}>Export</div>
             <div className={styles.cardDesc}>
               Download all cloud connections, DNS connections, and auto-update policies.
-              <span className={styles.warning}> Credentials included in plaintext — keep secure.</span>
+              Credentials are encrypted with your chosen password using AES-256-GCM.
             </div>
           </div>
-          <button className="btn-primary" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exporting…' : 'Export'}
-          </button>
+          <button className="btn-primary" onClick={openExportModal}>Export</button>
         </div>
       </div>
 
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <div className={styles.cardTitle}>Import</div>
+            <div className={styles.cardTitle}>
+              Import
+              {pendingFile && <span className={styles.encryptedBadge}>🔒 encrypted</span>}
+            </div>
             <div className={styles.cardDesc}>
               Restore connections and policies from a previously exported file.
               Existing items (matched by provider + name) are skipped.
             </div>
           </div>
-          <div>
-            <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
-            <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importing}>
-              {importing ? 'Importing…' : 'Import file'}
-            </button>
-          </div>
+          {!pendingFile && (
+            <div>
+              <input ref={fileRef} type="file" accept=".json,.opsatlas,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
+              <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importing}>
+                {importing ? 'Importing…' : 'Import file'}
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Decrypt form for encrypted files */}
+        {pendingFile && (
+          <form onSubmit={handleDecryptAndImport} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className={styles.pwField}>
+              <label className={styles.pwLabel}>Decryption password</label>
+              <input
+                type="password"
+                className={styles.pwInput}
+                value={importPw}
+                onChange={(e) => setImportPw(e.target.value)}
+                placeholder="Enter the password used during export"
+                autoFocus
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn-ghost" onClick={() => { setPendingFile(null); setImportPw(''); setImportError(''); }}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={importing}>
+                {importing ? 'Decrypting…' : 'Decrypt & Import'}
+              </button>
+            </div>
+          </form>
+        )}
+
         {importError && <div className={styles.error}>{importError}</div>}
         {importResult && (
           <div className={styles.resultBox}>

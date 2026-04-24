@@ -1,0 +1,13 @@
+services:
+  frontend:
+    ports:
+      - '3000:3000'
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+  backend:
+    ports:
+      - '4000:4000'
+  postgres:
+    ports:
+      - '127.0.0.1:5432:5432'
