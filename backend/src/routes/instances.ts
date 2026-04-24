@@ -15,6 +15,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
   let query = db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
+    .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
     .where('cloud_connections.user_id', req.userId)
     .select(
       'instances.id',
@@ -36,6 +37,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       'instances.estimated_monthly_cost',
       'instances.project_or_account_id',
       'instances.created_at',
+      'projects_or_accounts.name as project_name',
+      'projects_or_accounts.external_id as project_external_id',
     )
     .orderBy('instances.name');
 

@@ -95,6 +95,8 @@ function InstancesPageInner() {
         (inst.public_ip ?? '').includes(q) ||
         (inst.private_ip ?? '').includes(q) ||
         inst.connection_name.toLowerCase().includes(q) ||
+        (inst.project_name ?? '').toLowerCase().includes(q) ||
+        (inst.project_external_id ?? '').toLowerCase().includes(q) ||
         (inst.instance_type ?? '').toLowerCase().includes(q)
       );
     }
@@ -241,7 +243,9 @@ function InstancesPageInner() {
                 >
                   {inst.name}
                 </button>
-                <div className={styles.instId}>{inst.instance_id}</div>
+                <div className={styles.instId}>
+                  {inst.project_name ?? inst.connection_name}
+                </div>
               </div>
               <div>
                 <span className={styles.provider}>{inst.provider.toUpperCase()}</span>

@@ -235,6 +235,8 @@ export interface Instance {
   estimated_hourly_cost: string | null;
   estimated_monthly_cost: string | null;
   project_or_account_id: string | null;
+  project_name: string | null;
+  project_external_id: string | null;
   created_at: string;
 }
 
