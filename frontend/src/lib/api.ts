@@ -360,6 +360,9 @@ export interface AutoUpdateRun {
   status: 'success' | 'error' | 'running';
   error: string | null;
   connections_synced: number;
+  instances_synced: number;
+  dns_records_synced: number;
+  cost_rows_upserted: number;
   started_at: string;
   finished_at: string | null;
 }

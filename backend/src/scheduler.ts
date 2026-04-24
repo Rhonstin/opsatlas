@@ -56,9 +56,13 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
   try {
     const connections = await getTargetConnections(policy);
 
+    let totalInstances = 0;
+    let totalDnsRecords = 0;
+    let totalCostRows = 0;
+
     for (const conn of connections) {
-      if (policy.sync_instances) await syncInstances(conn);
-      if (policy.sync_dns) await syncDns(conn);
+      if (policy.sync_instances) totalInstances += await syncInstances(conn);
+      if (policy.sync_dns) totalDnsRecords += await syncDns(conn);
     }
 
     if (policy.sync_cost) {
@@ -69,8 +73,8 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
         console.warn(`[scheduler] policy "${policy.name}" billing errors:`, errors.map((r) => `${r.connection_name}: ${r.message}`).join(', '));
       } else {
         const ok = billingResults.filter((r) => r.status === 'ok');
-        const totalRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
-        console.log(`[scheduler] policy "${policy.name}" billing: ${totalRows} rows upserted for ${period}`);
+        totalCostRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
+        console.log(`[scheduler] policy "${policy.name}" billing: ${totalCostRows} rows upserted for ${period}`);
       }
     }
 
@@ -86,10 +90,13 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
     await db('auto_update_runs').where({ id: run.id }).update({
       status: 'success',
       connections_synced: connections.length,
+      instances_synced: totalInstances,
+      dns_records_synced: totalDnsRecords,
+      cost_rows_upserted: totalCostRows,
       finished_at: now,
     });
 
-    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections)`);
+    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections, ${totalInstances} instances, ${totalDnsRecords} DNS records, ${totalCostRows} cost rows)`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const failures = (policy.failure_count as number) + 1;
@@ -136,8 +143,9 @@ async function getTargetConnections(policy: Record<string, unknown>): Promise<Re
   return q.select('*');
 }
 
-async function syncInstances(conn: Record<string, unknown>): Promise<void> {
+async function syncInstances(conn: Record<string, unknown>): Promise<number> {
   const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
+  let count = 0;
 
   if (conn.provider === 'gcp') {
     let priceCache: Map<string, number> | undefined;
@@ -159,6 +167,7 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
         const instances = await listGcpInstances(project.externalId as string, credentials, priceCache);
         for (const inst of instances) {
           await upsertInstanceRow({ ...inst, provider: 'gcp', connectionId: conn.id as string, projectId: project.id as string | null });
+          count++;
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -171,6 +180,7 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
         const sqlInstances = await listCloudSqlInstances(project.externalId as string, credentials);
         for (const inst of sqlInstances) {
           await upsertInstanceRow({ ...inst, provider: 'gcp', resourceType: 'cloudsql', connectionId: conn.id as string, projectId: project.id as string | null });
+          count++;
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -181,11 +191,13 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
     const servers = await listHetznerServers(credentials.token as string);
     for (const inst of servers) {
       await upsertInstanceRow({ ...inst, provider: 'hetzner', connectionId: conn.id as string, projectId: null });
+      count++;
     }
   } else if (conn.provider === 'aws') {
     const instances = await listAwsInstances(credentials);
     for (const inst of instances) {
       await upsertInstanceRow({ ...inst, provider: 'aws', connectionId: conn.id as string, projectId: null });
+      count++;
     }
   }
 
@@ -194,6 +206,8 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
     last_sync_at: new Date(),
     last_error: null,
   });
+
+  return count;
 }
 
 async function upsertInstanceRow(inst: {
@@ -233,9 +247,10 @@ async function upsertInstanceRow(inst: {
     ]);
 }
 
-async function syncDns(conn: Record<string, unknown>): Promise<void> {
+async function syncDns(conn: Record<string, unknown>): Promise<number> {
   // Find dns_connections belonging to same user
   const dnsConns = await db('dns_connections').where({ user_id: conn.user_id }).select('*');
+  let count = 0;
 
   for (const dnsConn of dnsConns) {
     try {
@@ -261,6 +276,7 @@ async function syncDns(conn: Record<string, unknown>): Promise<void> {
               })
               .onConflict(['dns_connection_id', 'record_id'])
               .merge(['name', 'type', 'value', 'ttl', 'proxied', 'last_seen_at', 'updated_at']);
+            count++;
           }
         }
         await db('dns_connections').where({ id: dnsConn.id }).update({
@@ -277,4 +293,6 @@ async function syncDns(conn: Record<string, unknown>): Promise<void> {
       });
     }
   }
+
+  return count;
 }

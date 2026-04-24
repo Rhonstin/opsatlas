@@ -123,7 +123,7 @@ function AddPolicyForm({ onCreated, onCancel }: { onCreated: (p: AutoUpdatePolic
 
 // ── Run History ───────────────────────────────────────────────────────────────
 
-function RunHistory({ policyId }: { policyId: string }) {
+function RunHistory({ policyId, policy }: { policyId: string; policy: AutoUpdatePolicy }) {
   const [runs, setRuns] = useState<AutoUpdateRun[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -135,6 +135,12 @@ function RunHistory({ policyId }: { policyId: string }) {
 
   if (loading) return <p className={styles.cardStatus}>Loading history…</p>;
   if (runs.length === 0) return <p className={styles.cardStatus} style={{ marginTop: 8 }}>No runs yet.</p>;
+
+  const syncedTypes = [
+    policy.sync_instances && 'instances',
+    policy.sync_dns && 'DNS',
+    policy.sync_cost && 'cost',
+  ].filter(Boolean).join(', ');
 
   return (
     <div className={styles.runHistory}>
@@ -149,6 +155,9 @@ function RunHistory({ policyId }: { policyId: string }) {
             {run.status === 'success' && (
               <span className={styles.runMeta}>
                 {run.connections_synced} connection{run.connections_synced !== 1 ? 's' : ''}
+                {policy.sync_instances && ` · ${run.instances_synced} instance${run.instances_synced !== 1 ? 's' : ''}`}
+                {policy.sync_dns && ` · ${run.dns_records_synced} DNS record${run.dns_records_synced !== 1 ? 's' : ''}`}
+                {policy.sync_cost && ` · ${run.cost_rows_upserted} cost row${run.cost_rows_upserted !== 1 ? 's' : ''}`}
                 {duration !== null ? ` · ${duration}s` : ''}
               </span>
             )}
@@ -156,7 +165,7 @@ function RunHistory({ policyId }: { policyId: string }) {
               <span className={styles.runError}>{run.error}</span>
             )}
             {run.status === 'running' && (
-              <span className={styles.runMeta}>running…</span>
+              <span className={styles.runMeta}>syncing {syncedTypes}…</span>
             )}
           </div>
         );
@@ -237,7 +246,7 @@ function PolicyCard({
           )}
         </div>
 
-        {showHistory && <RunHistory policyId={policy.id} />}
+        {showHistory && <RunHistory policyId={policy.id} policy={policy} />}
       </div>
 
       <div className={styles.cardActions}>
