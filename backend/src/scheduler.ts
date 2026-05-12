@@ -9,6 +9,7 @@ import { listGcpInstances } from './gcp/sync';
 import { refreshBillingCache, loadPriceCache, isCacheStale } from './gcp/billing';
 import { listHetznerServers } from './hetzner/sync';
 import { listAwsInstances } from './aws/ec2';
+import { listCoolifyApps } from './coolify/sync';
 import { listCloudSqlInstances } from './gcp/cloudsql';
 import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
 import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
@@ -246,6 +247,18 @@ async function syncInstances(conn: Record<string, unknown>, preferredCurrency: s
         estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
         estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
         provider: 'aws',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
+      count++;
+    }
+  } else if (conn.provider === 'coolify') {
+    const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
+    for (const inst of apps) {
+      await upsertInstanceRow({
+        ...inst,
+        provider: 'coolify',
+        resourceType: 'app',
         connectionId: conn.id as string,
         projectId: null,
       });

@@ -4,6 +4,7 @@ import { encrypt, decrypt } from '../lib/crypto';
 import { testGcpCredentials } from '../gcp/sync';
 import { testHetznerCredentials } from '../hetzner/sync';
 import { testAwsCredentials } from '../aws/ec2';
+import { testCoolifyCredentials } from '../coolify/sync';
 import { discoverGcpProjects } from '../gcp/projects';
 import { AuthRequest } from '../middleware/auth';
 
@@ -35,6 +36,9 @@ router.post('/validate', async (req: AuthRequest, res: Response) => {
     } else if (provider === 'aws') {
       await testAwsCredentials(creds);
       res.json({ ok: true, message: 'AWS credentials validated.' });
+    } else if (provider === 'coolify') {
+      await testCoolifyCredentials(creds.base_url as string, creds.api_token as string);
+      res.json({ ok: true, message: 'Coolify credentials validated.' });
     } else {
       res.status(400).json({ error: 'Unknown provider' });
     }
@@ -55,8 +59,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: 'provider, name, and credentials are required' });
     return;
   }
-  if (!['gcp', 'aws', 'hetzner'].includes(provider)) {
-    res.status(400).json({ error: 'provider must be gcp, aws, or hetzner' });
+  if (!['gcp', 'aws', 'hetzner', 'coolify'].includes(provider)) {
+    res.status(400).json({ error: 'provider must be gcp, aws, hetzner, or coolify' });
     return;
   }
 
@@ -145,6 +149,10 @@ router.post('/:id/test', async (req: AuthRequest, res: Response) => {
       await testAwsCredentials(credentials);
       await db('cloud_connections').where({ id: conn.id }).update({ status: 'active', last_error: null });
       res.json({ ok: true, message: 'AWS credentials validated successfully.' });
+    } else if (conn.provider === 'coolify') {
+      await testCoolifyCredentials(credentials.base_url as string, credentials.api_token as string);
+      await db('cloud_connections').where({ id: conn.id }).update({ status: 'active', last_error: null });
+      res.json({ ok: true, message: 'Coolify credentials validated successfully.' });
     } else {
       res.json({ ok: true, message: 'Provider not supported.' });
     }

@@ -248,7 +248,7 @@ export interface SyncRun {
 
 export interface Instance {
   id: string;
-  provider: 'gcp' | 'aws' | 'hetzner';
+  provider: 'gcp' | 'aws' | 'hetzner' | 'coolify';
   resource_type: string;        // 'compute' | 'cloudsql'
   connection_id: string;
   connection_name: string;
@@ -287,7 +287,7 @@ export interface SavedProject {
 
 export interface Connection {
   id: string;
-  provider: 'gcp' | 'aws' | 'hetzner';
+  provider: 'gcp' | 'aws' | 'hetzner' | 'coolify';
   name: string;
   status: 'active' | 'error' | 'pending';
   last_sync_at: string | null;
@@ -360,6 +360,9 @@ export interface InstanceDetail extends Instance {
   project_name: string | null;
   project_external_id: string | null;
   database_version: string | null;
+  app_urls: string[];
+  git_repository: string | null;
+  git_branch: string | null;
 }
 
 export interface BillingActual {

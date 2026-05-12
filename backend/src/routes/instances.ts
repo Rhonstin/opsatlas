@@ -59,16 +59,15 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     domains: null as string[] | null,
   }));
 
-  // Optionally enrich with DNS domain names
+  // Enrich with domain names
   if (req.query.with_dns === 'true') {
-    // Fetch all A/AAAA records belonging to the same user
+    // IP-based: DNS A/AAAA records for GCP/AWS/Hetzner instances
     const dnsRows = await db('dns_records')
       .join('dns_connections', 'dns_records.dns_connection_id', 'dns_connections.id')
       .where('dns_connections.user_id', req.userId)
       .whereIn('dns_records.type', ['A', 'AAAA'])
       .select('dns_records.value as ip', 'dns_records.name as domain', 'dns_records.proxied');
 
-    // Build IP → domain list map
     const ipToDomains = new Map<string, string[]>();
     for (const r of dnsRows) {
       if (!ipToDomains.has(r.ip)) ipToDomains.set(r.ip, []);
@@ -76,10 +75,28 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       ipToDomains.get(r.ip)!.push(label);
     }
 
-    withUptime = withUptime.map((inst) => ({
-      ...inst,
-      domains: inst.public_ip ? (ipToDomains.get(inst.public_ip) ?? null) : null,
-    }));
+    // fqdn-based: Coolify apps store domains in raw_payload.fqdn_list
+    const appIds = withUptime.filter((i) => i.resource_type === 'app').map((i) => i.id);
+    const appFqdnMap = new Map<string, string[]>();
+    if (appIds.length > 0) {
+      const payloadRows = await db('instances')
+        .whereIn('id', appIds)
+        .select('id', 'raw_payload');
+      for (const row of payloadRows) {
+        const payload = typeof row.raw_payload === 'string'
+          ? JSON.parse(row.raw_payload as string)
+          : (row.raw_payload as Record<string, unknown>);
+        const fqdns = Array.isArray(payload?.fqdn_list) ? (payload.fqdn_list as string[]) : [];
+        if (fqdns.length > 0) appFqdnMap.set(row.id as string, fqdns);
+      }
+    }
+
+    withUptime = withUptime.map((inst) => {
+      if (inst.resource_type === 'app') {
+        return { ...inst, domains: appFqdnMap.get(inst.id) ?? null };
+      }
+      return { ...inst, domains: inst.public_ip ? (ipToDomains.get(inst.public_ip) ?? null) : null };
+    });
   }
 
   res.json(withUptime);
@@ -257,8 +274,23 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     database_version = (payload as Record<string, unknown>).databaseVersion as string ?? null;
   }
 
+  // Extract Coolify-specific fields (domains come from fqdn_list, not DNS records)
+  let app_urls: string[] = [];
+  let git_repository: string | null = null;
+  let git_branch: string | null = null;
+  if (inst.resource_type === 'app' && inst.raw_payload) {
+    const payload = typeof inst.raw_payload === 'string'
+      ? JSON.parse(inst.raw_payload as string)
+      : inst.raw_payload as Record<string, unknown>;
+    const fqdnList = Array.isArray(payload.fqdn_list) ? (payload.fqdn_list as string[]) : [];
+    app_urls = fqdnList;
+    if (domains.length === 0) domains = fqdnList;
+    git_repository = (payload.git_repository as string | null) ?? null;
+    git_branch = (payload.git_branch as string | null) ?? null;
+  }
+
   const { raw_payload: _raw, ...rest } = inst;
-  res.json({ ...rest, cpu_count, ram_gb, disks, domains, database_version });
+  res.json({ ...rest, cpu_count, ram_gb, disks, domains, database_version, app_urls, git_repository, git_branch });
 });
 
 export default router;

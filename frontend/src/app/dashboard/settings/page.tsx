@@ -42,9 +42,9 @@ function ConnectionsTab() {
     try {
       const data = await api.getConnections();
       setConnections(data);
-      const gcpConns = data.filter((c) => c.provider === 'gcp');
+      const projectConns = data.filter((c) => c.provider === 'gcp' || c.provider === 'coolify');
       const counts = await Promise.all(
-        gcpConns.map((c) =>
+        projectConns.map((c) =>
           api.getSelectedProjects(c.id)
             .then((ps) => [c.id, ps.length] as [string, number])
             .catch(() => [c.id, 0] as [string, number]),
@@ -157,6 +157,12 @@ function ConnectionsTab() {
                         ? `${projectCounts[conn.id]} project${projectCounts[conn.id] !== 1 ? 's' : ''}`
                         : '—'}
                     </button>
+                  ) : conn.provider === 'coolify' ? (
+                    <span className={connStyles.muted}>
+                      {projectCounts[conn.id] != null
+                        ? `${projectCounts[conn.id]} project${projectCounts[conn.id] !== 1 ? 's' : ''}`
+                        : '—'}
+                    </span>
                   ) : <span className={connStyles.muted}>—</span>}
                 </span>
                 <span className={connStyles.muted}>
@@ -167,7 +173,7 @@ function ConnectionsTab() {
                   <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleTest(conn.id)}>
                     {testResults[conn.id] ?? 'Test'}
                   </button>
-                  {['gcp', 'hetzner', 'aws'].includes(conn.provider) && (
+                  {['gcp', 'hetzner', 'aws', 'coolify'].includes(conn.provider) && (
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
                       {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                     </button>

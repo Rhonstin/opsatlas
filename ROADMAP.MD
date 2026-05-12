@@ -32,7 +32,7 @@
 ## 2. Data Model
 
 ### CloudConnection
-- id, user_id, provider (`gcp` | `aws` | `hetzner`), name
+- id, user_id, provider (`gcp` | `aws` | `hetzner` | `coolify`), name
 - credentials_enc (AES-256-GCM)
 - status, last_sync_at, last_error
 
@@ -41,7 +41,7 @@
 
 ### Instance
 - id, provider, connection_id, project_or_account_id
-- **resource_type** (`compute` | `cloudsql`) — distinguishes VMs from managed DBs
+- **resource_type** (`compute` | `cloudsql` | `app`) — distinguishes VMs from managed DBs and PaaS apps
 - instance_id, name, status, region, zone
 - private_ip, public_ip, instance_type
 - launched_at, last_seen_at
@@ -311,6 +311,31 @@ Real billing data from cloud provider APIs.
 - [x] Billing nav link enabled
 - [ ] Scheduled billing refresh via auto-update policy
 
+### Milestone 15A — Coolify Integration
+Connect to self-hosted Coolify instances to surface deployed applications, projects, and domain names alongside cloud infrastructure.
+
+**Goal:** unified view of Coolify apps and services with their live domains, status, and resource links.
+
+#### Work items
+- [ ] `provider: 'coolify'` support on `cloud_connections`
+- [ ] Coolify API token auth + connection test (GET `/api/v1/health`)
+- [ ] Fetch projects from Coolify API → upsert into `projects_or_accounts`
+- [ ] Fetch applications and services per project → upsert into `instances` with `resource_type: 'app'`
+- [ ] Sync domain names from Coolify app config → store in `dns_records` or new `app_domains` table
+- [ ] Link Coolify domains to existing DNS records (cross-reference with Cloudflare sync)
+- [ ] Coolify projects shown in connections project list
+- [ ] Applications appear in unified instances table (name, project, status, domains, URLs)
+- [ ] Instance detail drawer: show Coolify resource type, linked services, repo URL, deploy URL
+- [ ] Scheduled sync via existing auto-update policies
+
+#### Implementation notes
+- Coolify v4 REST API: `GET /api/v1/applications`, `GET /api/v1/projects`, `GET /api/v1/services`
+- Auth header: `Authorization: Bearer <api_token>` — token scoped to the Coolify instance
+- Each Coolify server is one `cloud_connection`; `base_url` stored in credentials JSON
+- Application statuses map to internal: `running` → `RUNNING`, `stopped` → `STOPPED`, `exited` → `ERROR`
+- Domain names come from app `fqdn` field (can be a comma-separated list)
+- Phase 2: linked resources (databases, Redis, etc.) as child instances
+
 ### Milestone 15 — Dashboard Overhaul
 Consolidate cost visibility and surface real billing data on the main dashboard.
 
@@ -388,6 +413,11 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - `GET /billing/periods`
 - `POST /billing/refresh`
 
+### Coolify *(Milestone 15A)*
+- `POST /connections/:id/test` — validates Coolify API token + base URL
+- `GET /connections/:id/projects` — Coolify projects
+- `POST /sync/:connection_id` — syncs apps, services, domains from Coolify
+
 ### Port Scanning *(Milestone 12)*
 - `POST /port-scan/:instance_id`
 - `GET /ports`
@@ -406,6 +436,7 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - [x] GCP Cloud SQL (synced alongside Compute Engine)
 - [x] Hetzner (API token, all servers)
 - [ ] AWS (1 account)
+- [ ] Coolify (self-hosted, API token, projects + apps + domains)
 
 ### Core Features
 - [x] Instances list with uptime + cost
@@ -430,7 +461,7 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 
 ## 6. Future Extensions
 
-- **Providers:** Azure, Hetzner Robot (dedicated), DigitalOcean, AWS EC2
+- **Providers:** Azure, Hetzner Robot (dedicated), DigitalOcean, AWS EC2, Coolify (Milestone 15A)
 - **Orchestration:** Kubernetes (pods / nodes), RDS, Cloud Spanner
 - **DNS:** Route 53 + Cloud DNS (Milestone 11 Phase B/C), reverse DNS lookup
 - **Billing:** Enable billing nav link, scheduled billing refresh, cost anomaly alerts

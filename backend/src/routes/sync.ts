@@ -6,6 +6,7 @@ import { listCloudSqlInstances } from '../gcp/cloudsql';
 import { refreshBillingCache, loadPriceCache, isCacheStale } from '../gcp/billing';
 import { listHetznerServers } from '../hetzner/sync';
 import { listAwsInstances } from '../aws/ec2';
+import { listCoolifyApps } from '../coolify/sync';
 import { AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -26,7 +27,7 @@ router.post('/:connection_id', async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  if (!['gcp', 'hetzner', 'aws'].includes(conn.provider)) {
+  if (!['gcp', 'hetzner', 'aws', 'coolify'].includes(conn.provider)) {
     res.status(400).json({ error: 'Sync not supported for this provider' });
     return;
   }
@@ -53,6 +54,8 @@ async function runSync(conn: Record<string, string>, runId: string) {
       await syncHetzner(conn, credentials);
     } else if (conn.provider === 'aws') {
       await syncAws(conn, credentials);
+    } else if (conn.provider === 'coolify') {
+      await syncCoolify(conn, credentials);
     }
 
     await db('sync_runs').where({ id: runId }).update({ status: 'success', finished_at: new Date() });
@@ -141,6 +144,14 @@ async function syncAws(conn: Record<string, string>, credentials: Record<string,
     await upsertInstance({ ...inst, provider: 'aws', connectionId: conn.id, projectId: null });
   }
   console.log(`[sync] AWS ${conn.name}: ${instances.length} instances`);
+}
+
+async function syncCoolify(conn: Record<string, string>, credentials: Record<string, unknown>) {
+  const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
+  for (const inst of apps) {
+    await upsertInstance({ ...inst, provider: 'coolify', resourceType: 'app', connectionId: conn.id, projectId: null });
+  }
+  console.log(`[sync] Coolify ${conn.name}: ${apps.length} apps/services`);
 }
 
 async function upsertInstance(inst: {

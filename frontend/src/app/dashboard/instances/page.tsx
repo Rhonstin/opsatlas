@@ -72,12 +72,12 @@ function calcCostToDate(inst: Instance): number {
 
 
 type SortKey = 'name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
-type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner';
+type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'coolify';
 
 function InstancesPageInner() {
   const searchParams = useSearchParams();
   const rawView = searchParams.get('view') ?? 'all';
-  const initialView = (['all', 'gcp', 'aws', 'hetzner'].includes(rawView) ? rawView : 'all') as ViewMode;
+  const initialView = (['all', 'gcp', 'aws', 'hetzner', 'coolify'].includes(rawView) ? rawView : 'all') as ViewMode;
 
   const [instances, setInstances] = useState<InstanceWithDns[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,6 +182,7 @@ function InstancesPageInner() {
             <option value="">All types</option>
             <option value="compute">Compute</option>
             <option value="cloudsql">Cloud SQL</option>
+            <option value="app">App</option>
           </select>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 130 }}>
             <option value="">All statuses</option>
@@ -197,6 +198,7 @@ function InstancesPageInner() {
         {viewTab('gcp', 'GCP', providerCount('gcp'))}
         {viewTab('aws', 'AWS', providerCount('aws'))}
         {viewTab('hetzner', 'Hetzner', providerCount('hetzner'))}
+        {providerCount('coolify') > 0 && viewTab('coolify', 'Coolify', providerCount('coolify'))}
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
