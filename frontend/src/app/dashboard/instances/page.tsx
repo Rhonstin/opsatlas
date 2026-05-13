@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, Instance } from '@/lib/api';
+import { getUser } from '@/lib/auth';
 import { useSort } from '@/lib/useSort';
 import InstanceDrawer from './InstanceDrawer';
 import styles from './instances.module.css';
@@ -75,6 +76,7 @@ type SortKey = 'name' | 'provider' | 'status' | 'instance_type' | 'region' | 'up
 type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'coolify';
 
 function InstancesPageInner() {
+  const isViewer = getUser()?.role === 'viewer';
   const searchParams = useSearchParams();
   const rawView = searchParams.get('view') ?? 'all';
   const initialView = (['all', 'gcp', 'aws', 'hetzner', 'coolify'].includes(rawView) ? rawView : 'all') as ViewMode;
@@ -168,7 +170,7 @@ function InstancesPageInner() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.heading}>Instances</h1>
-          <p className={styles.sub}>{instances.length} instance{instances.length !== 1 ? 's' : ''} · est. {`$${totalMonthlyCost.toFixed(2)}/mo`}</p>
+          <p className={styles.sub}>{instances.length} instance{instances.length !== 1 ? 's' : ''}{!isViewer && ` · est. $${totalMonthlyCost.toFixed(2)}/mo`}</p>
         </div>
         <div className={styles.filters}>
           <input
@@ -238,14 +240,16 @@ function InstancesPageInner() {
             {col('instance_type', 'Type')}
             {col('region', 'Region / Zone')}
             {col('uptime_hours', 'Uptime')}
-            <button
-              className={styles.thBtn}
-              onClick={() => toggle('estimated_monthly_cost')}
-              title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
-            >
-              Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
-              <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
-            </button>
+            {!isViewer && (
+              <button
+                className={styles.thBtn}
+                onClick={() => toggle('estimated_monthly_cost')}
+                title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
+              >
+                Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
+                <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
+              </button>
+            )}
             <span>IPs / Domains</span>
           </div>
           {sorted.map((inst) => (
@@ -283,20 +287,22 @@ function InstancesPageInner() {
                   <span className={styles.longRunningBadge}>long-running</span>
                 )}
               </div>
-              <div>
-                <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
-                {inst.status === 'RUNNING'
-                  ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, displayCurrency)}</div>
-                  : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
-                    ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
-                    : null
-                }
-                {inst.status === 'RUNNING' && (
-                  <div className={styles.costToDate}>
-                    {currencySymbol(displayCurrency)}{calcCostToDate(inst).toFixed(2)} this mo
-                  </div>
-                )}
-              </div>
+              {!isViewer && (
+                <div>
+                  <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
+                  {inst.status === 'RUNNING'
+                    ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, displayCurrency)}</div>
+                    : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
+                      ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
+                      : null
+                  }
+                  {inst.status === 'RUNNING' && (
+                    <div className={styles.costToDate}>
+                      {currencySymbol(displayCurrency)}{calcCostToDate(inst).toFixed(2)} this mo
+                    </div>
+                  )}
+                </div>
+              )}
               <div className={styles.ipCell}>
                 {inst.public_ip && <div>{inst.public_ip}</div>}
                 {inst.private_ip && <div className={styles.instId}>{inst.private_ip}</div>}
