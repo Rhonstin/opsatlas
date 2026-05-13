@@ -55,12 +55,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {menuOpen ? '✕' : '☰'}
           </button>
           <div className={`${styles.navLinks} ${menuOpen ? styles.navLinksOpen : ''}`}>
-            <Link href="/dashboard" className={pathname === '/dashboard' ? styles.linkActive : styles.link}>
-              Dashboard
-            </Link>
-            <Link href="/dashboard/instances" className={pathname === '/dashboard/instances' ? styles.linkActive : styles.link}>
-              Instances
-            </Link>
+            {isViewer ? (
+              <Link href="/dashboard/instances" className={pathname.startsWith('/dashboard/instances') || pathname === '/dashboard' ? styles.linkActive : styles.link}>
+                Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link href="/dashboard" className={pathname === '/dashboard' ? styles.linkActive : styles.link}>
+                  Dashboard
+                </Link>
+                <Link href="/dashboard/instances" className={pathname === '/dashboard/instances' ? styles.linkActive : styles.link}>
+                  Instances
+                </Link>
+              </>
+            )}
             <Link href="/dashboard/dns/records" className={pathname.startsWith('/dashboard/dns') ? styles.linkActive : styles.link}>
               DNS
             </Link>

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Instance, Connection, CostSummary, CostByProject, BillingActual } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -22,12 +23,17 @@ function currentPeriod(): string {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [billingActuals, setBillingActuals] = useState<BillingActual[]>([]);
 
   const isViewer = getUser()?.role === 'viewer';
+
+  useEffect(() => {
+    if (isViewer) { router.replace('/dashboard/instances'); return; }
+  }, [isViewer, router]);
 
   useEffect(() => {
     api.getInstances().then(setInstances).catch(() => {});
