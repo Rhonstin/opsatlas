@@ -5,6 +5,13 @@ import { parseMachineType } from '../gcp/cost';
 
 const router = Router();
 
+/** Viewers see all admin users' instances; admins see their own. */
+async function getScopeUserIds(req: AuthRequest): Promise<string[]> {
+  if (req.userRole !== 'viewer') return [req.userId!];
+  const admins = await db('users').where({ role: 'admin' }).pluck('id');
+  return admins.length > 0 ? admins : [req.userId!];
+}
+
 /**
  * GET /instances
  * List all instances for the authenticated user across all connections.
@@ -12,11 +19,12 @@ const router = Router();
  */
 router.get('/', async (req: AuthRequest, res: Response) => {
   const { provider, status, connection_id, resource_type } = req.query;
+  const scopeIds = await getScopeUserIds(req);
 
   let query = db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
     .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
-    .where('cloud_connections.user_id', req.userId)
+    .whereIn('cloud_connections.user_id', scopeIds)
     .select(
       'instances.id',
       'instances.provider',
@@ -49,7 +57,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
   const rows = await query;
 
-  // Compute uptime hours client-side to avoid DB dialect issues
   const now = Date.now();
   let withUptime = rows.map((r) => ({
     ...r,
@@ -61,10 +68,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
   // Enrich with domain names
   if (req.query.with_dns === 'true') {
-    // IP-based: DNS A/AAAA records for GCP/AWS/Hetzner instances
     const dnsRows = await db('dns_records')
       .join('dns_connections', 'dns_records.dns_connection_id', 'dns_connections.id')
-      .where('dns_connections.user_id', req.userId)
+      .whereIn('dns_connections.user_id', scopeIds)
       .whereIn('dns_records.type', ['A', 'AAAA'])
       .select('dns_records.value as ip', 'dns_records.name as domain', 'dns_records.proxied');
 
@@ -75,7 +81,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       ipToDomains.get(r.ip)!.push(label);
     }
 
-    // fqdn-based: Coolify apps store domains in raw_payload.fqdn_list
     const appIds = withUptime.filter((i) => i.resource_type === 'app').map((i) => i.id);
     const appFqdnMap = new Map<string, string[]>();
     if (appIds.length > 0) {
@@ -108,12 +113,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
  * Must be declared before /:id to avoid routing conflict.
  */
 router.get('/cost-summary', async (req: AuthRequest, res: Response) => {
-  const LONG_RUNNING_HOURS = 30 * 24; // 30 days
+  const LONG_RUNNING_HOURS = 30 * 24;
+  const scopeIds = await getScopeUserIds(req);
 
   const rows = await db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
     .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
-    .where('cloud_connections.user_id', req.userId)
+    .whereIn('cloud_connections.user_id', scopeIds)
     .select(
       'instances.id',
       'instances.name',
@@ -140,7 +146,6 @@ router.get('/cost-summary', async (req: AuthRequest, res: Response) => {
     monthly_cost: r.estimated_monthly_cost ? parseFloat(r.estimated_monthly_cost) : 0,
   }));
 
-  // Cost aggregated per project (fall back to connection if no project stored)
   const byProjectMap = new Map<string, {
     key: string;
     project_name: string;
@@ -181,13 +186,12 @@ router.get('/cost-summary', async (req: AuthRequest, res: Response) => {
     (i) => i.status === 'STOPPED' || i.status === 'TERMINATED',
   );
 
-  // Count DNS records whose IP matches one of the user's instances
   const mappedResult = await db('dns_records')
     .join('dns_connections', 'dns_records.dns_connection_id', 'dns_connections.id')
     .join('instances as inst_m', 'dns_records.value', 'inst_m.public_ip')
     .join('cloud_connections as cc_m', 'inst_m.connection_id', 'cc_m.id')
-    .where('dns_connections.user_id', req.userId)
-    .where('cc_m.user_id', req.userId)
+    .whereIn('dns_connections.user_id', scopeIds)
+    .whereIn('cc_m.user_id', scopeIds)
     .countDistinct('dns_records.id as count')
     .first();
   const domains_mapped = parseInt(String(mappedResult?.count ?? 0));
@@ -206,11 +210,13 @@ router.get('/cost-summary', async (req: AuthRequest, res: Response) => {
  * Single instance detail.
  */
 router.get('/:id', async (req: AuthRequest, res: Response) => {
+  const scopeIds = await getScopeUserIds(req);
+
   const inst = await db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
     .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
     .where('instances.id', req.params.id)
-    .where('cloud_connections.user_id', req.userId)
+    .whereIn('cloud_connections.user_id', scopeIds)
     .select(
       'instances.*',
       'cloud_connections.name as connection_name',
@@ -224,12 +230,10 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  // Derive CPU / RAM from machine type
   const [cpu_count, ram_gb] = inst.instance_type
     ? parseMachineType(inst.instance_type)
     : [null, null];
 
-  // Parse attached disks from raw_payload
   interface RawDisk {
     deviceName?: unknown; diskSizeGb?: unknown; type?: unknown;
     boot?: unknown; interface?: unknown;
@@ -250,12 +254,11 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     }));
   }
 
-  // DNS domains pointing at this instance's public IP
   let domains: string[] = [];
   if (inst.public_ip) {
     const dnsRows = await db('dns_records')
       .join('dns_connections', 'dns_records.dns_connection_id', 'dns_connections.id')
-      .where('dns_connections.user_id', req.userId)
+      .whereIn('dns_connections.user_id', scopeIds)
       .where('dns_records.value', inst.public_ip)
       .whereIn('dns_records.type', ['A', 'AAAA'])
       .select('dns_records.name', 'dns_records.proxied');
@@ -264,7 +267,6 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     );
   }
 
-  // Extract Cloud SQL database version if present
   let database_version: string | null = null;
   if (inst.resource_type === 'cloudsql' && inst.raw_payload) {
     const payload =
@@ -274,7 +276,6 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     database_version = (payload as Record<string, unknown>).databaseVersion as string ?? null;
   }
 
-  // Extract Coolify-specific fields (domains come from fqdn_list, not DNS records)
   let app_urls: string[] = [];
   let git_repository: string | null = null;
   let git_branch: string | null = null;
