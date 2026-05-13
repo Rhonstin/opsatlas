@@ -43,7 +43,7 @@ export default function LoginPage() {
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_provider', 'authentik');
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = `${window.location.origin}/oauth/callback`;
     const params = new URLSearchParams({
       client_id: authentik.clientId,
       redirect_uri: redirectUri,
@@ -59,7 +59,7 @@ export default function LoginPage() {
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_provider', 'google');
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = `${window.location.origin}/oauth/callback`;
     const params = new URLSearchParams({
       client_id: google.clientId,
       redirect_uri: redirectUri,

@@ -507,7 +507,7 @@ function SsoTab() {
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_provider', 'authentik');
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = `${window.location.origin}/oauth/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -607,7 +607,7 @@ function SsoTab() {
           <strong>Authentik setup</strong>
           <ol>
             <li>In Authentik, create an <em>OAuth2/OpenID Provider</em> application</li>
-            <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/auth/callback</code></li>
+            <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/oauth/callback</code></li>
             <li>Enable scopes: <code>openid email profile</code></li>
           </ol>
         </div>
@@ -670,7 +670,7 @@ function GoogleSsoCard() {
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_provider', 'google');
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = `${window.location.origin}/oauth/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -763,7 +763,7 @@ function GoogleSsoCard() {
         <strong>Google Cloud Console setup</strong>
         <ol>
           <li>Go to <em>APIs &amp; Services → Credentials</em> and create an OAuth 2.0 Client ID</li>
-          <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/auth/callback</code></li>
+          <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/oauth/callback</code></li>
           <li>Google users sign in as <strong>viewers</strong> — they can see instances but not billing or API keys</li>
         </ol>
       </div>

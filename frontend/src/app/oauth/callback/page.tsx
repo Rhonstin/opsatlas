@@ -40,7 +40,7 @@ function CallbackInner() {
     const provider = sessionStorage.getItem('oauth_provider') ?? 'authentik';
     sessionStorage.removeItem('oauth_provider');
 
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = `${window.location.origin}/oauth/callback`;
 
     const callbackFn = provider === 'google'
       ? api.googleCallback(code, redirectUri)
