@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import qrcode from 'qrcode';
 import db from '../db';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const SALT_ROUNDS = 12;
@@ -63,10 +63,10 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
-  const [user] = await db('users').insert({ email, password_hash }).returning(['id', 'email']);
+  const [user] = await db('users').insert({ email, password_hash, role: 'admin' }).returning(['id', 'email', 'role']);
 
-  const token = issueToken(user.id);
-  res.status(201).json({ token, user: { id: user.id, email: user.email } });
+  const token = issueToken(user.id, 'admin');
+  res.status(201).json({ token, user: { id: user.id, email: user.email, role: 'admin' } });
 });
 
 router.post('/login', async (req: Request, res: Response) => {
@@ -101,8 +101,8 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
-  const token = issueToken(user.id);
-  res.json({ token, user: { id: user.id, email: user.email } });
+  const token = issueToken(user.id, user.role ?? 'admin');
+  res.json({ token, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
 });
 
 // ── MFA routes ────────────────────────────────────────────────────────────────
@@ -147,8 +147,8 @@ router.post('/mfa/confirm', async (req: Request, res: Response) => {
     return;
   }
 
-  const token = issueToken(user.id);
-  res.json({ token, user: { id: user.id, email: user.email } });
+  const token = issueToken(user.id, user.role ?? 'admin');
+  res.json({ token, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
 });
 
 /**
@@ -237,6 +237,178 @@ router.get('/mfa/status', authenticateToken, async (req: AuthRequest, res: Respo
 
 // ── SSO ───────────────────────────────────────────────────────────────────────
 
+interface GoogleConfig {
+  clientId: string;
+  clientSecret: string;
+  allowedDomain: string | null;
+}
+
+async function getGoogleConfig(): Promise<GoogleConfig | null> {
+  const rows = await db('app_settings')
+    .whereIn('key', ['google_client_id', 'google_client_secret', 'google_allowed_domain'])
+    .select('key', 'value')
+    .catch(() => [] as { key: string; value: string }[]);
+
+  const map = Object.fromEntries(rows.map((r: { key: string; value: string }) => [r.key, r.value]));
+
+  if (map.google_client_id && map.google_client_secret) {
+    return {
+      clientId: map.google_client_id,
+      clientSecret: map.google_client_secret,
+      allowedDomain: map.google_allowed_domain || null,
+    };
+  }
+
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ALLOWED_DOMAIN } = process.env;
+  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+    return {
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      allowedDomain: GOOGLE_ALLOWED_DOMAIN || null,
+    };
+  }
+
+  return null;
+}
+
+/** GET /auth/google-config — returns current Google OAuth config (secret masked). Requires admin. */
+router.get('/google-config', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  const rows = await db('app_settings')
+    .whereIn('key', ['google_client_id', 'google_client_secret', 'google_allowed_domain'])
+    .select('key', 'value')
+    .catch(() => [] as { key: string; value: string }[]);
+
+  const map = Object.fromEntries(rows.map((r: { key: string; value: string }) => [r.key, r.value]));
+
+  res.json({
+    clientId: map.google_client_id || '',
+    hasSecret: !!map.google_client_secret,
+    allowedDomain: map.google_allowed_domain || '',
+  });
+});
+
+/** PUT /auth/google-config — save Google OAuth config. Requires admin. */
+router.put('/google-config', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { clientId, clientSecret, allowedDomain } = req.body as {
+    clientId?: string;
+    clientSecret?: string;
+    allowedDomain?: string;
+  };
+
+  const updates: Array<{ key: string; value: string }> = [];
+  if (clientId !== undefined) updates.push({ key: 'google_client_id', value: clientId });
+  if (clientSecret) updates.push({ key: 'google_client_secret', value: clientSecret });
+  if (allowedDomain !== undefined) updates.push({ key: 'google_allowed_domain', value: allowedDomain });
+
+  for (const { key, value } of updates) {
+    await db('app_settings').insert({ key, value }).onConflict('key').merge();
+  }
+
+  res.json({ ok: true });
+});
+
+/**
+ * POST /auth/google/callback
+ * Exchange a Google authorization code for a JWT.
+ * Google users always get `viewer` role.
+ * Body: { code: string, redirectUri: string }
+ */
+router.post('/google/callback', async (req: Request, res: Response) => {
+  const { code, redirectUri } = req.body as { code?: string; redirectUri?: string };
+
+  if (!code || !redirectUri) {
+    res.status(400).json({ error: 'code and redirectUri are required' });
+    return;
+  }
+
+  const config = await getGoogleConfig();
+  if (!config) {
+    res.status(503).json({ error: 'Google OAuth is not configured on this server' });
+    return;
+  }
+
+  try {
+    // 1. Exchange authorization code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      const body = await tokenRes.json().catch(() => ({})) as { error_description?: string };
+      res.status(400).json({ error: body.error_description || 'Token exchange failed' });
+      return;
+    }
+
+    const tokens = await tokenRes.json() as { access_token: string };
+
+    // 2. Fetch user info
+    const userInfoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+
+    if (!userInfoRes.ok) {
+      res.status(400).json({ error: 'Failed to fetch user info from Google' });
+      return;
+    }
+
+    const userInfo = await userInfoRes.json() as { sub: string; email: string; hd?: string };
+
+    if (!userInfo.email || !userInfo.sub) {
+      res.status(400).json({ error: 'Google did not return an email address' });
+      return;
+    }
+
+    // 3. Enforce allowed domain (Google Workspace) if configured
+    if (config.allowedDomain) {
+      const domain = userInfo.email.split('@')[1];
+      if (domain !== config.allowedDomain && userInfo.hd !== config.allowedDomain) {
+        res.status(403).json({ error: `Only @${config.allowedDomain} accounts are allowed` });
+        return;
+      }
+    }
+
+    // 4. Find or create local user — Google users always get viewer role
+    let user = await db('users')
+      .where({ sso_provider: 'google', sso_id: userInfo.sub })
+      .first();
+
+    if (!user) {
+      const existing = await db('users').where({ email: userInfo.email }).first();
+      if (existing) {
+        await db('users')
+          .where({ id: existing.id })
+          .update({ sso_provider: 'google', sso_id: userInfo.sub });
+        user = { ...existing, sso_provider: 'google', sso_id: userInfo.sub };
+      } else {
+        const [created] = await db('users')
+          .insert({
+            email: userInfo.email,
+            sso_provider: 'google',
+            sso_id: userInfo.sub,
+            role: 'viewer',
+          })
+          .returning(['id', 'email', 'role']);
+        user = created;
+      }
+    }
+
+    const jwtToken = issueToken(user.id, user.role ?? 'viewer');
+    res.json({ token: jwtToken, user: { id: user.id, email: user.email, role: user.role ?? 'viewer' } });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'SSO error';
+    console.error('[google callback]', msg);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+});
+
 interface AuthentikConfig {
   url: string;
   clientId: string;
@@ -271,12 +443,25 @@ async function getAuthentikConfig(): Promise<AuthentikConfig | null> {
 
 /** Returns which SSO providers are configured. */
 router.get('/providers', async (_req: Request, res: Response) => {
-  const config = await getAuthentikConfig();
+  const [authentikCfg, googleCfg] = await Promise.all([
+    getAuthentikConfig(),
+    getGoogleConfig(),
+  ]);
   res.json({
-    authentik: config
-      ? { enabled: true, url: config.url, clientId: config.clientId }
+    authentik: authentikCfg
+      ? { enabled: true, url: authentikCfg.url, clientId: authentikCfg.clientId }
+      : { enabled: false },
+    google: googleCfg
+      ? { enabled: true, clientId: googleCfg.clientId, allowedDomain: googleCfg.allowedDomain }
       : { enabled: false },
   });
+});
+
+/** GET /auth/me — returns current user info including role. */
+router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const user = await db('users').where({ id: req.userId }).select('id', 'email', 'role').first();
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+  res.json({ id: user.id, email: user.email, role: user.role ?? 'admin' });
 });
 
 /** GET /auth/sso-config — returns current DB config (secret masked). Requires auth. */
@@ -398,14 +583,15 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
             email: userInfo.email,
             sso_provider: 'authentik',
             sso_id: userInfo.sub,
+            role: 'admin',
           })
-          .returning(['id', 'email']);
+          .returning(['id', 'email', 'role']);
         user = created;
       }
     }
 
-    const jwtToken = issueToken(user.id);
-    res.json({ token: jwtToken, user: { id: user.id, email: user.email } });
+    const jwtToken = issueToken(user.id, user.role ?? 'admin');
+    res.json({ token: jwtToken, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'SSO error';
     console.error('[authentik callback]', msg);
@@ -415,10 +601,10 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function issueToken(userId: string): string {
+function issueToken(userId: string, role = 'admin'): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET not set');
-  return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+  return jwt.sign({ userId, role }, secret, { expiresIn: '7d' });
 }
 
 /** Short-lived token used during MFA challenge (5 minutes). */

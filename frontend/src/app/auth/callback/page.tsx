@@ -37,9 +37,16 @@ function CallbackInner() {
     }
     sessionStorage.removeItem('oauth_state');
 
+    const provider = sessionStorage.getItem('oauth_provider') ?? 'authentik';
+    sessionStorage.removeItem('oauth_provider');
+
     const redirectUri = `${window.location.origin}/auth/callback`;
 
-    api.authentikCallback(code, redirectUri)
+    const callbackFn = provider === 'google'
+      ? api.googleCallback(code, redirectUri)
+      : api.authentikCallback(code, redirectUri);
+
+    callbackFn
       .then((res) => {
         saveAuth(res.token, res.user);
         router.replace('/dashboard');

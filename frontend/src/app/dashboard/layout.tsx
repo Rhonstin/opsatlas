@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { isLoggedIn, getUser, clearAuth } from '@/lib/auth';
+import { isLoggedIn, getUser, clearAuth, AuthUser } from '@/lib/auth';
 import { ToastProvider } from '@/lib/toast';
 import styles from './layout.module.css';
 
@@ -23,8 +23,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.replace('/login');
   }
 
-  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   useEffect(() => { setUser(getUser()); }, []);
+
+  const isViewer = user?.role === 'viewer';
 
   return (
     <ToastProvider>
@@ -65,14 +67,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/dashboard/auto-update" className={pathname.startsWith('/dashboard/auto-update') ? styles.linkActive : styles.link}>
               Auto-Update
             </Link>
-            <Link href="/dashboard/billing" className={pathname.startsWith('/dashboard/billing') ? styles.linkActive : styles.link}>
-              Billing
-            </Link>
-            <Link href="/dashboard/settings" className={pathname.startsWith('/dashboard/settings') ? styles.linkActive : styles.link}>
-              Settings
-            </Link>
+            {!isViewer && (
+              <Link href="/dashboard/billing" className={pathname.startsWith('/dashboard/billing') ? styles.linkActive : styles.link}>
+                Billing
+              </Link>
+            )}
+            {!isViewer && (
+              <Link href="/dashboard/settings" className={pathname.startsWith('/dashboard/settings') ? styles.linkActive : styles.link}>
+                Settings
+              </Link>
+            )}
           </div>
           <div className={styles.navRight}>
+            {isViewer && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Viewer
+              </span>
+            )}
             <span className={styles.userEmail}>{user?.email}</span>
             <button className="btn-ghost" onClick={logout} style={{ padding: '5px 12px' }}>
               Sign out

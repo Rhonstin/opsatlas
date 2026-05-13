@@ -51,6 +51,7 @@ export const api = {
     fetch(`${BASE}/auth/providers`)
       .then((r) => r.json()) as Promise<{
         authentik: { enabled: boolean; url?: string; clientId?: string };
+        google: { enabled: boolean; clientId?: string; allowedDomain?: string | null };
       }>,
 
   getServerConfig: () =>
@@ -89,15 +90,30 @@ export const api = {
     }),
 
   confirmMfa: (mfa_token: string, code: string) =>
-    request<{ token: string; user: { id: string; email: string } }>('/auth/mfa/confirm', {
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/mfa/confirm', {
       method: 'POST',
       body: JSON.stringify({ mfa_token, code }),
     }),
 
   authentikCallback: (code: string, redirectUri: string) =>
-    request<{ token: string; user: { id: string; email: string } }>('/auth/authentik/callback', {
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/authentik/callback', {
       method: 'POST',
       body: JSON.stringify({ code, redirectUri }),
+    }),
+
+  googleCallback: (code: string, redirectUri: string) =>
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirectUri }),
+    }),
+
+  getGoogleConfig: () =>
+    request<{ clientId: string; hasSecret: boolean; allowedDomain: string }>('/auth/google-config'),
+
+  saveGoogleConfig: (data: { clientId: string; clientSecret?: string; allowedDomain?: string }) =>
+    request<{ ok: boolean }>('/auth/google-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 
   getSsoConfig: () =>

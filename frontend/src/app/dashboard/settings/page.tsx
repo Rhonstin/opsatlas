@@ -506,6 +506,7 @@ function SsoTab() {
     if (!url || !clientId) return;
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_provider', 'authentik');
     const redirectUri = `${window.location.origin}/auth/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
@@ -611,7 +612,162 @@ function SsoTab() {
           </ol>
         </div>
       </div>
+
+      <GoogleSsoCard />
     </section>
+  );
+}
+
+function GoogleSsoCard() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [hasExistingSecret, setHasExistingSecret] = useState(false);
+  const [changeSecret, setChangeSecret] = useState(false);
+  const [allowedDomain, setAllowedDomain] = useState('');
+
+  useEffect(() => {
+    api.getGoogleConfig()
+      .then((cfg) => {
+        setClientId(cfg.clientId);
+        setHasExistingSecret(cfg.hasSecret);
+        setAllowedDomain(cfg.allowedDomain);
+        setEnabled(!!(cfg.clientId && cfg.hasSecret));
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clientId.trim()) { toast('error', 'Client ID is required'); return; }
+    if (!hasExistingSecret && !clientSecret.trim()) { toast('error', 'Client secret is required'); return; }
+    setSaving(true);
+    try {
+      const payload: { clientId: string; clientSecret?: string; allowedDomain?: string } = {
+        clientId: clientId.trim(),
+        allowedDomain: allowedDomain.trim(),
+      };
+      if (changeSecret || !hasExistingSecret) payload.clientSecret = clientSecret;
+      await api.saveGoogleConfig(payload);
+      setHasExistingSecret(true);
+      setChangeSecret(false);
+      setClientSecret('');
+      setEnabled(true);
+      toast('success', 'Google OAuth configuration saved');
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function testGoogle() {
+    if (!clientId) return;
+    const state = crypto.randomUUID();
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_provider', 'google');
+    const redirectUri = `${window.location.origin}/auth/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      access_type: 'online',
+    });
+    window.open(`https://accounts.google.com/o/oauth2/v2/auth?${params}`, '_blank');
+  }
+
+  return (
+    <div className={styles.card} style={{ marginTop: 16 }}>
+      <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        Google Workspace
+        {!loading && (
+          <span className={`badge ${enabled ? 'badge-active' : 'badge-pending'}`}>
+            {enabled ? 'Configured' : 'Not configured'}
+          </span>
+        )}
+        {enabled && (
+          <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }} onClick={testGoogle}>
+            Test login
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
+      ) : (
+        <form onSubmit={handleSave} className={styles.ssoForm}>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Client ID</label>
+            <input
+              type="text"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="000000000000-xxxx.apps.googleusercontent.com"
+              className={styles.ssoInput}
+            />
+          </div>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Client Secret</label>
+            {hasExistingSecret && !changeSecret ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className={styles.ssoSecretMasked}>••••••••••••</span>
+                <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setChangeSecret(true)}>
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={hasExistingSecret ? 'Enter new secret' : 'GOCSPX-…'}
+                  className={styles.ssoInput}
+                  style={{ flex: 1 }}
+                  autoFocus={changeSecret}
+                />
+                {hasExistingSecret && (
+                  <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Allowed domain <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input
+              type="text"
+              value={allowedDomain}
+              onChange={(e) => setAllowedDomain(e.target.value)}
+              placeholder="yourcompany.com"
+              className={styles.ssoInput}
+            />
+            <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Restrict sign-in to this Google Workspace domain. Leave empty to allow any Google account.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className={styles.ssoInstructions}>
+        <strong>Google Cloud Console setup</strong>
+        <ol>
+          <li>Go to <em>APIs &amp; Services → Credentials</em> and create an OAuth 2.0 Client ID</li>
+          <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/auth/callback</code></li>
+          <li>Google users sign in as <strong>viewers</strong> — they can see instances but not billing or API keys</li>
+        </ol>
+      </div>
+    </div>
   );
 }
 

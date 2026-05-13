@@ -6,7 +6,7 @@ import { testHetznerCredentials } from '../hetzner/sync';
 import { testAwsCredentials } from '../aws/ec2';
 import { testCoolifyCredentials } from '../coolify/sync';
 import { discoverGcpProjects } from '../gcp/projects';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -18,7 +18,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 /** POST /connections/validate — test credentials without creating a connection */
-router.post('/validate', async (req: AuthRequest, res: Response) => {
+router.post('/validate', requireAdmin, async (req: AuthRequest, res: Response) => {
   const { provider, credentials } = req.body as { provider?: string; credentials?: unknown };
   if (!provider || !credentials) {
     res.status(400).json({ error: 'provider and credentials are required' });
@@ -48,7 +48,7 @@ router.post('/validate', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   const { provider, name, credentials } = req.body as {
     provider?: string;
     name?: string;
@@ -85,7 +85,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   res.json(conn);
 });
 
-router.patch('/:id', async (req: AuthRequest, res: Response) => {
+router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const { name, credentials } = req.body as { name?: string; credentials?: unknown };
 
   const existing = await db('cloud_connections')
@@ -111,7 +111,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response) => {
   res.json(updated);
 });
 
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const deleted = await db('cloud_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .delete();
@@ -123,7 +123,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   res.status(204).send();
 });
 
-router.post('/:id/test', async (req: AuthRequest, res: Response) => {
+router.post('/:id/test', requireAdmin, async (req: AuthRequest, res: Response) => {
   const conn = await db('cloud_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .first();
@@ -164,7 +164,7 @@ router.post('/:id/test', async (req: AuthRequest, res: Response) => {
 });
 
 /** GET /connections/:id/projects/discover — list accessible GCP projects */
-router.get('/:id/projects/discover', async (req: AuthRequest, res: Response) => {
+router.get('/:id/projects/discover', requireAdmin, async (req: AuthRequest, res: Response) => {
   const conn = await db('cloud_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .first();
@@ -195,7 +195,7 @@ router.get('/:id/projects', async (req: AuthRequest, res: Response) => {
 });
 
 /** POST /connections/:id/projects — replace project selection */
-router.post('/:id/projects', async (req: AuthRequest, res: Response) => {
+router.post('/:id/projects', requireAdmin, async (req: AuthRequest, res: Response) => {
   const conn = await db('cloud_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .first();
