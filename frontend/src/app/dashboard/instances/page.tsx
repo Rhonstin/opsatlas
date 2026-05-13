@@ -240,7 +240,7 @@ function InstancesPageInner() {
             {col('instance_type', 'Type')}
             {col('region', 'Region / Zone')}
             {col('uptime_hours', 'Uptime')}
-            {!isViewer && (
+            {isViewer ? <span /> : (
               <button
                 className={styles.thBtn}
                 onClick={() => toggle('estimated_monthly_cost')}
@@ -287,7 +287,7 @@ function InstancesPageInner() {
                   <span className={styles.longRunningBadge}>long-running</span>
                 )}
               </div>
-              {!isViewer && (
+              {isViewer ? <div /> : (
                 <div>
                   <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
                   {inst.status === 'RUNNING'
