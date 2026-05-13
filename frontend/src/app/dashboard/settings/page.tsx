@@ -6,6 +6,7 @@ import { api, Connection, DnsConnection, ConfigExport, ConfigImportResult } from
 import { encryptConfig, decryptConfig, isEncryptedEnvelope } from '@/lib/config-crypto';
 import { useSort } from '@/lib/useSort';
 import { useToast } from '@/lib/toast';
+import { getUser } from '@/lib/auth';
 import AddConnectionModal from '../connections/AddConnectionModal';
 import EditConnectionModal from '../connections/EditConnectionModal';
 import ProjectsModal from '../connections/ProjectsModal';
@@ -1335,6 +1336,13 @@ const TABS: { id: Tab; label: string }[] = [
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  useEffect(() => {
+    if (getUser()?.role === 'viewer') router.replace('/dashboard');
+  }, [router]);
+
+  if (getUser()?.role === 'viewer') return null;
+
   const raw = searchParams.get('tab') ?? 'connections';
   const tab = (TABS.some((t) => t.id === raw) ? raw : 'connections') as Tab;
 

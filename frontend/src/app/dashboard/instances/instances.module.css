@@ -63,6 +63,7 @@
   transition: background 0.1s;
   font-size: 13px;
 }
+.row > * { min-width: 0; }
 .row:last-child { border-bottom: none; }
 .row:hover { background: rgba(255, 255, 255, 0.04); }
 
@@ -82,6 +83,16 @@
   letter-spacing: 0.03em;
 }
 .muted { color: var(--muted); font-size: 12px; }
+
+.regionCell {
+  min-width: 0;
+  overflow: hidden;
+}
+.regionCell > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* View tabs */
 .viewTabs {

@@ -277,7 +277,7 @@ function InstancesPageInner() {
                 </span>
               </span>
               <span className={styles.muted}>{inst.instance_type ?? '—'}</span>
-              <div>
+              <div className={styles.regionCell}>
                 <div>{inst.region}</div>
                 {inst.zone && <div className={styles.instId}>{inst.zone}</div>}
               </div>
