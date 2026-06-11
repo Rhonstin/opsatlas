@@ -23,7 +23,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
   try {
     const payload = jwt.verify(token, secret) as { userId: string; role?: string };
     req.userId = payload.userId;
-    req.userRole = payload.role ?? 'admin';
+    req.userRole = payload.role ?? 'viewer';
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });

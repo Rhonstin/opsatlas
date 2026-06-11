@@ -7,7 +7,7 @@ import { refreshBillingCache, loadPriceCache, isCacheStale } from '../gcp/billin
 import { listHetznerServers } from '../hetzner/sync';
 import { listAwsInstances } from '../aws/ec2';
 import { listCoolifyApps } from '../coolify/sync';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -15,7 +15,7 @@ const router = Router();
  * POST /sync/:connection_id
  * Trigger a manual sync for a connection. Runs GCP fetch, upserts instances.
  */
-router.post('/:connection_id', async (req: AuthRequest, res: Response) => {
+router.post('/:connection_id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const { connection_id } = req.params;
 
   const conn = await db('cloud_connections')

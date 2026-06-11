@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import db from '../db';
 import { decrypt } from '../lib/crypto';
 import { listCloudflareZones, listCloudflareRecords } from '../dns/cloudflare';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -10,7 +10,7 @@ const router = Router();
  * POST /dns-sync/:connection_id
  * Trigger a DNS sync for a dns_connection. Runs async, returns 202 immediately.
  */
-router.post('/:connection_id', async (req: AuthRequest, res: Response) => {
+router.post('/:connection_id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const conn = await db('dns_connections')
     .where({ id: req.params.connection_id, user_id: req.userId })
     .first();

@@ -104,7 +104,7 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   }
 
   const [updated] = await db('cloud_connections')
-    .where({ id: req.params.id })
+    .where({ id: req.params.id, user_id: req.userId })
     .update(updates)
     .returning(['id', 'provider', 'name', 'status', 'last_sync_at', 'created_at']);
 

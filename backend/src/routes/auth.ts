@@ -1,13 +1,26 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import qrcode from 'qrcode';
 import db from '../db';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { fetchWithTimeout } from '../lib/http';
+
+// OAuth exchanges block the login flow — keep the timeout short
+const OAUTH_TIMEOUT_MS = 15_000;
 
 const router = Router();
 const SALT_ROUNDS = 12;
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, try again later' },
+});
 
 /** GET /auth/config — public endpoint, returns server feature flags */
 router.get('/config', async (_req: Request, res: Response) => {
@@ -21,8 +34,8 @@ router.get('/config', async (_req: Request, res: Response) => {
   res.json({ allowRegistrations, preferredCurrency });
 });
 
-/** PUT /auth/config — update server config. Requires auth. */
-router.put('/config', authenticateToken, async (req: AuthRequest, res: Response) => {
+/** PUT /auth/config — update server config. Requires admin. */
+router.put('/config', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   const { allowRegistrations, preferredCurrency } = req.body as { allowRegistrations?: boolean; preferredCurrency?: string };
   if (typeof allowRegistrations === 'boolean') {
     await db('app_settings')
@@ -37,7 +50,7 @@ router.put('/config', authenticateToken, async (req: AuthRequest, res: Response)
   res.json({ ok: true });
 });
 
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', authLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -69,7 +82,7 @@ router.post('/register', async (req: Request, res: Response) => {
   res.status(201).json({ token, user: { id: user.id, email: user.email, role: 'admin' } });
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -112,7 +125,7 @@ router.post('/login', async (req: Request, res: Response) => {
  * Exchange a short-lived MFA token + TOTP code for a full session token.
  * Body: { mfa_token: string, code: string }
  */
-router.post('/mfa/confirm', async (req: Request, res: Response) => {
+router.post('/mfa/confirm', authLimiter, async (req: Request, res: Response) => {
   const { mfa_token, code } = req.body as { mfa_token?: string; code?: string };
   if (!mfa_token || !code) {
     res.status(400).json({ error: 'mfa_token and code are required' });
@@ -329,7 +342,7 @@ router.post('/google/callback', async (req: Request, res: Response) => {
 
   try {
     // 1. Exchange authorization code for tokens
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenRes = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -339,7 +352,7 @@ router.post('/google/callback', async (req: Request, res: Response) => {
         code,
         redirect_uri: redirectUri,
       }),
-    });
+    }, OAUTH_TIMEOUT_MS);
 
     if (!tokenRes.ok) {
       const body = await tokenRes.json().catch(() => ({})) as { error_description?: string };
@@ -350,9 +363,9 @@ router.post('/google/callback', async (req: Request, res: Response) => {
     const tokens = await tokenRes.json() as { access_token: string };
 
     // 2. Fetch user info
-    const userInfoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+    const userInfoRes = await fetchWithTimeout('https://openidconnect.googleapis.com/v1/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
+    }, OAUTH_TIMEOUT_MS);
 
     if (!userInfoRes.ok) {
       res.status(400).json({ error: 'Failed to fetch user info from Google' });
@@ -464,8 +477,8 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
   res.json({ id: user.id, email: user.email, role: user.role ?? 'admin' });
 });
 
-/** GET /auth/sso-config — returns current DB config (secret masked). Requires auth. */
-router.get('/sso-config', authenticateToken, async (_req: AuthRequest, res: Response) => {
+/** GET /auth/sso-config — returns current DB config (secret masked). Requires admin. */
+router.get('/sso-config', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
   const rows = await db('app_settings')
     .whereIn('key', ['authentik_url', 'authentik_client_id', 'authentik_client_secret'])
     .select('key', 'value')
@@ -482,8 +495,8 @@ router.get('/sso-config', authenticateToken, async (_req: AuthRequest, res: Resp
   });
 });
 
-/** PUT /auth/sso-config — save Authentik config to DB. Requires auth. */
-router.put('/sso-config', authenticateToken, async (req: AuthRequest, res: Response) => {
+/** PUT /auth/sso-config — save Authentik config to DB. Requires admin. */
+router.put('/sso-config', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   const { url, clientId, clientSecret } = req.body as {
     url?: string;
     clientId?: string;
@@ -527,7 +540,7 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
 
   try {
     // 1. Exchange authorization code for access token
-    const tokenRes = await fetch(`${config.url}/application/o/token/`, {
+    const tokenRes = await fetchWithTimeout(`${config.url}/application/o/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -537,7 +550,7 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
         code,
         redirect_uri: redirectUri,
       }),
-    });
+    }, OAUTH_TIMEOUT_MS);
 
     if (!tokenRes.ok) {
       const body = await tokenRes.json().catch(() => ({})) as { error_description?: string };
@@ -548,9 +561,9 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
     const tokens = await tokenRes.json() as { access_token: string };
 
     // 2. Fetch user info from Authentik
-    const userInfoRes = await fetch(`${config.url}/application/o/userinfo/`, {
+    const userInfoRes = await fetchWithTimeout(`${config.url}/application/o/userinfo/`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
+    }, OAUTH_TIMEOUT_MS);
 
     if (!userInfoRes.ok) {
       res.status(400).json({ error: 'Failed to fetch user info from Authentik' });

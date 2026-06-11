@@ -8,7 +8,17 @@ const KEY_LENGTH = 32;
 function getKey(): Buffer {
   const secret = process.env.ENCRYPTION_KEY;
   if (!secret) throw new Error('ENCRYPTION_KEY env var not set');
-  return Buffer.from(secret.padEnd(KEY_LENGTH, '0').slice(0, KEY_LENGTH));
+  if (secret.length < KEY_LENGTH) {
+    throw new Error(
+      `ENCRYPTION_KEY must be at least ${KEY_LENGTH} characters (got ${secret.length}). Generate one with: openssl rand -hex 16`
+    );
+  }
+  return Buffer.from(secret.slice(0, KEY_LENGTH));
+}
+
+/** Fail fast at startup instead of on the first encrypt/decrypt call. */
+export function validateEncryptionKey(): void {
+  getKey();
 }
 
 export function encrypt(plaintext: string): string {
