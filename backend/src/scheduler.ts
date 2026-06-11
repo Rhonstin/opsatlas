@@ -20,9 +20,49 @@ const TICK_MS = 60_000;
 // Max backoff: 24 h
 const MAX_BACKOFF_MINUTES = 24 * 60;
 
-export function startScheduler(): void {
+// Max policies syncing at the same time
+const MAX_CONCURRENT_POLICIES = 3;
+
+// A policy stuck in 'running' longer than this is treated as dead and may be re-claimed
+const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
+
+const activeRuns = new Set<Promise<void>>();
+let intervalHandle: NodeJS.Timeout | null = null;
+
+export function startScheduler(): { stop: () => Promise<void> } {
   console.log('[scheduler] started — tick every 60 s');
-  setInterval(tick, TICK_MS);
+
+  // Recover from a previous crash: anything still 'running' was interrupted
+  recoverInterruptedRuns().catch((err) => {
+    console.error('[scheduler] failed to recover interrupted runs:', err);
+  });
+
+  intervalHandle = setInterval(tick, TICK_MS);
+
+  return {
+    async stop() {
+      if (intervalHandle) clearInterval(intervalHandle);
+      intervalHandle = null;
+      if (activeRuns.size > 0) {
+        console.log(`[scheduler] waiting for ${activeRuns.size} active run(s) to finish…`);
+        await Promise.allSettled([...activeRuns]);
+      }
+    },
+  };
+}
+
+async function recoverInterruptedRuns(): Promise<void> {
+  const policies = await db('auto_update_policies')
+    .where({ last_status: 'running' })
+    .update({ last_status: 'error', last_error: 'interrupted by restart' });
+
+  const runs = await db('auto_update_runs')
+    .where({ status: 'running' })
+    .update({ status: 'error', error: 'interrupted by restart', finished_at: new Date() });
+
+  if (policies || runs) {
+    console.warn(`[scheduler] recovered ${policies} policy(ies) and ${runs} run(s) interrupted by previous shutdown`);
+  }
 }
 
 async function tick(): Promise<void> {
@@ -33,11 +73,21 @@ async function tick(): Promise<void> {
       .where('next_run_at', '<=', now)
       .select('*');
 
-    for (const policy of due) {
-      runPolicy(policy).catch((err: unknown) => {
-        console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
-      });
-    }
+    // Simple pool: at most MAX_CONCURRENT_POLICIES policies in flight at once
+    const queue = [...due];
+    const workers = Array.from({ length: Math.min(MAX_CONCURRENT_POLICIES, queue.length) }, async () => {
+      let policy;
+      while ((policy = queue.shift())) {
+        try {
+          await runPolicy(policy);
+        } catch (err) {
+          console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
+        }
+      }
+    });
+    const batch = Promise.allSettled(workers).then(() => undefined);
+    activeRuns.add(batch);
+    batch.finally(() => activeRuns.delete(batch));
   } catch (err) {
     console.error('[scheduler] tick error:', err);
   }
@@ -46,9 +96,21 @@ async function tick(): Promise<void> {
 async function runPolicy(policy: Record<string, unknown>): Promise<void> {
   const startedAt = new Date();
 
-  await db('auto_update_policies').where({ id: policy.id }).update({
-    last_status: 'running',
-  });
+  // Atomic claim: skip if another tick is already running this policy,
+  // unless that run looks dead (stuck in 'running' past the stale threshold).
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
+  const claimed = await db('auto_update_policies')
+    .where({ id: policy.id })
+    .where((q) =>
+      q.whereNot('last_status', 'running')
+        .orWhereNull('last_status')
+        .orWhere('last_run_at', '<', staleBefore)
+        .orWhereNull('last_run_at'),
+    )
+    // Stamp last_run_at at claim time so the stale check above measures THIS run's age
+    .update({ last_status: 'running', last_run_at: startedAt });
+
+  if (!claimed) return;
 
   // Insert a run record immediately so it appears in the audit log
   const [run] = await db('auto_update_runs')

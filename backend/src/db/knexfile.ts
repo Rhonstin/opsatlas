@@ -13,6 +13,7 @@ const config: Knex.Config = {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
   },
+  pool: { min: 2, max: 10 },
   migrations: {
     directory: path.join(__dirname, 'migrations'),
     extension: isTypeScript ? 'ts' : 'js',

@@ -4,6 +4,8 @@
  * Applications and services are normalized to the shared Instance model.
  */
 
+import { fetchWithTimeout } from '../lib/http';
+
 export interface CoolifyInstance {
   instanceId: string;
   name: string;
@@ -70,7 +72,7 @@ function parseFqdn(fqdn: string | null | undefined): string[] {
 
 async function coolifyFetch<T>(baseUrl: string, token: string, path: string): Promise<T> {
   const url = `${baseUrl.replace(/\/$/, '')}/api/v1${path}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
   if (!res.ok) {

@@ -15,8 +15,10 @@ export interface CloudflareRecord {
   proxied: boolean;
 }
 
+import { fetchWithTimeout } from '../lib/http';
+
 async function cfFetch(path: string, apiToken: string): Promise<unknown> {
-  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+  const res = await fetchWithTimeout(`https://api.cloudflare.com/client/v4${path}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
   const data = (await res.json()) as { success: boolean; result: unknown; errors: { message: string }[] };
