@@ -1,8 +1,17 @@
 import { Router, Response } from 'express';
 import db from '../db';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
+
+/** When scope='connection', target_id must point to one of the user's own connections. */
+async function ownsTargetConnection(userId: string | undefined, targetId: unknown): Promise<boolean> {
+  if (!targetId) return false;
+  const conn = await db('cloud_connections')
+    .where({ id: targetId, user_id: userId })
+    .first();
+  return !!conn;
+}
 
 /** GET /auto-update-policies */
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -13,7 +22,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 /** POST /auto-update-policies */
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   const {
     name,
     scope = 'global',
@@ -28,6 +37,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
   if (!name) {
     res.status(400).json({ error: 'name is required' });
+    return;
+  }
+
+  if (scope === 'connection' && !(await ownsTargetConnection(req.userId, target_id))) {
+    res.status(400).json({ error: 'target_id must reference one of your connections' });
     return;
   }
 
@@ -53,7 +67,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 /** PATCH /auto-update-policies/:id */
-router.patch('/:id', async (req: AuthRequest, res: Response) => {
+router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const existing = await db('auto_update_policies')
     .where({ id: req.params.id, user_id: req.userId })
     .first();
@@ -73,6 +87,13 @@ router.patch('/:id', async (req: AuthRequest, res: Response) => {
     if (key in req.body) updates[key] = (req.body as Record<string, unknown>)[key];
   }
 
+  const nextScope = 'scope' in updates ? updates.scope : existing.scope;
+  const nextTargetId = 'target_id' in updates ? updates.target_id : existing.target_id;
+  if (nextScope === 'connection' && !(await ownsTargetConnection(req.userId, nextTargetId))) {
+    res.status(400).json({ error: 'target_id must reference one of your connections' });
+    return;
+  }
+
   // If re-enabling or changing interval, reset next_run_at
   if ('enabled' in updates || 'interval_minutes' in updates) {
     const isEnabled = 'enabled' in updates ? updates.enabled : existing.enabled;
@@ -88,7 +109,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response) => {
   }
 
   const [updated] = await db('auto_update_policies')
-    .where({ id: req.params.id })
+    .where({ id: req.params.id, user_id: req.userId })
     .update(updates)
     .returning('*');
 
@@ -96,7 +117,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 /** DELETE /auto-update-policies/:id */
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const deleted = await db('auto_update_policies')
     .where({ id: req.params.id, user_id: req.userId })
     .delete();
@@ -129,7 +150,7 @@ router.get('/:id/runs', async (req: AuthRequest, res: Response) => {
 });
 
 /** POST /auto-update-policies/:id/run — trigger immediately */
-router.post('/:id/run', async (req: AuthRequest, res: Response) => {
+router.post('/:id/run', requireAdmin, async (req: AuthRequest, res: Response) => {
   const policy = await db('auto_update_policies')
     .where({ id: req.params.id, user_id: req.userId })
     .first();
@@ -140,7 +161,7 @@ router.post('/:id/run', async (req: AuthRequest, res: Response) => {
   }
 
   // Set next_run_at to now so the scheduler picks it up on the next tick
-  await db('auto_update_policies').where({ id: policy.id }).update({
+  await db('auto_update_policies').where({ id: policy.id, user_id: req.userId }).update({
     next_run_at: new Date(),
   });
 

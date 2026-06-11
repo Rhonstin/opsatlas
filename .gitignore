@@ -41,6 +41,9 @@ Thumbs.db
 # Testing
 coverage/
 
+# Local compose overrides (machine-specific)
+compose.install.yml
+
 # Misc
 .vercel
 .turbo

@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, Instance } from '@/lib/api';
+import { getUser } from '@/lib/auth';
 import { useSort } from '@/lib/useSort';
 import InstanceDrawer from './InstanceDrawer';
 import styles from './instances.module.css';
@@ -23,18 +24,23 @@ function statusClass(s: string): string {
   return STATUS_BADGE[s.toUpperCase()] ?? 'badge-pending';
 }
 
-function currencySymbol(provider: string): string {
-  return provider === 'hetzner' ? '€' : '$';
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', SGD: 'S$',
+  AUD: 'A$', CAD: 'CA$', HKD: 'HK$', INR: '₹', CHF: 'Fr',
+};
+
+function currencySymbol(currency: string): string {
+  return CURRENCY_SYMBOLS[currency] ?? currency;
 }
 
-function fmt(n: string | null, provider = ''): string {
+function fmt(n: string | null, currency = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(provider)}${parseFloat(n).toFixed(4)}/hr`;
+  return `${currencySymbol(currency)}${parseFloat(n).toFixed(4)}/hr`;
 }
 
-function fmtMonthly(n: string | null, provider = ''): string {
+function fmtMonthly(n: string | null, currency = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(provider)}${parseFloat(n).toFixed(2)}/mo`;
+  return `${currencySymbol(currency)}${parseFloat(n).toFixed(2)}/mo`;
 }
 
 function fmtUptime(hours: number | null): string {
@@ -67,16 +73,18 @@ function calcCostToDate(inst: Instance): number {
 
 
 type SortKey = 'name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
-type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner';
+type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'coolify';
 
 function InstancesPageInner() {
+  const isViewer = getUser()?.role === 'viewer';
   const searchParams = useSearchParams();
   const rawView = searchParams.get('view') ?? 'all';
-  const initialView = (['all', 'gcp', 'aws', 'hetzner'].includes(rawView) ? rawView : 'all') as ViewMode;
+  const initialView = (['all', 'gcp', 'aws', 'hetzner', 'coolify'].includes(rawView) ? rawView : 'all') as ViewMode;
 
   const [instances, setInstances] = useState<InstanceWithDns[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [displayCurrency, setDisplayCurrency] = useState('USD');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterResourceType, setFilterResourceType] = useState('');
   const [search, setSearch] = useState('');
@@ -95,6 +103,8 @@ function InstancesPageInner() {
         (inst.public_ip ?? '').includes(q) ||
         (inst.private_ip ?? '').includes(q) ||
         inst.connection_name.toLowerCase().includes(q) ||
+        (inst.project_name ?? '').toLowerCase().includes(q) ||
+        (inst.project_external_id ?? '').toLowerCase().includes(q) ||
         (inst.instance_type ?? '').toLowerCase().includes(q)
       );
     }
@@ -122,6 +132,12 @@ function InstancesPageInner() {
   }
 
   useEffect(() => { fetchInstances(); }, [filterStatus, filterResourceType]);
+
+  useEffect(() => {
+    api.getServerConfig()
+      .then((cfg) => setDisplayCurrency(cfg.preferredCurrency ?? 'USD'))
+      .catch(() => { /* non-fatal, keep default USD */ });
+  }, []);
 
   const totalMonthlyCost = instances.reduce(
     (sum, i) => sum + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0),
@@ -154,7 +170,7 @@ function InstancesPageInner() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.heading}>Instances</h1>
-          <p className={styles.sub}>{instances.length} instance{instances.length !== 1 ? 's' : ''} · est. {`$${totalMonthlyCost.toFixed(2)}/mo`}</p>
+          <p className={styles.sub}>{instances.length} instance{instances.length !== 1 ? 's' : ''}{!isViewer && ` · est. $${totalMonthlyCost.toFixed(2)}/mo`}</p>
         </div>
         <div className={styles.filters}>
           <input
@@ -168,6 +184,7 @@ function InstancesPageInner() {
             <option value="">All types</option>
             <option value="compute">Compute</option>
             <option value="cloudsql">Cloud SQL</option>
+            <option value="app">App</option>
           </select>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 130 }}>
             <option value="">All statuses</option>
@@ -183,6 +200,7 @@ function InstancesPageInner() {
         {viewTab('gcp', 'GCP', providerCount('gcp'))}
         {viewTab('aws', 'AWS', providerCount('aws'))}
         {viewTab('hetzner', 'Hetzner', providerCount('hetzner'))}
+        {providerCount('coolify') > 0 && viewTab('coolify', 'Coolify', providerCount('coolify'))}
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
@@ -222,14 +240,16 @@ function InstancesPageInner() {
             {col('instance_type', 'Type')}
             {col('region', 'Region / Zone')}
             {col('uptime_hours', 'Uptime')}
-            <button
-              className={styles.thBtn}
-              onClick={() => toggle('estimated_monthly_cost')}
-              title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
-            >
-              Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
-              <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
-            </button>
+            {isViewer ? <span /> : (
+              <button
+                className={styles.thBtn}
+                onClick={() => toggle('estimated_monthly_cost')}
+                title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
+              >
+                Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
+                <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
+              </button>
+            )}
             <span>IPs / Domains</span>
           </div>
           {sorted.map((inst) => (
@@ -241,7 +261,9 @@ function InstancesPageInner() {
                 >
                   {inst.name}
                 </button>
-                <div className={styles.instId}>{inst.instance_id}</div>
+                <div className={styles.instId}>
+                  {inst.project_name ?? inst.connection_name}
+                </div>
               </div>
               <div>
                 <span className={styles.provider}>{inst.provider.toUpperCase()}</span>
@@ -255,7 +277,7 @@ function InstancesPageInner() {
                 </span>
               </span>
               <span className={styles.muted}>{inst.instance_type ?? '—'}</span>
-              <div>
+              <div className={styles.regionCell}>
                 <div>{inst.region}</div>
                 {inst.zone && <div className={styles.instId}>{inst.zone}</div>}
               </div>
@@ -265,20 +287,22 @@ function InstancesPageInner() {
                   <span className={styles.longRunningBadge}>long-running</span>
                 )}
               </div>
-              <div>
-                <div>{fmtMonthly(inst.estimated_monthly_cost, inst.provider)}</div>
-                {inst.status === 'RUNNING'
-                  ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, inst.provider)}</div>
-                  : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
-                    ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
-                    : null
-                }
-                {inst.status === 'RUNNING' && (
-                  <div className={styles.costToDate}>
-                    {currencySymbol(inst.provider)}{calcCostToDate(inst).toFixed(2)} this mo
-                  </div>
-                )}
-              </div>
+              {isViewer ? <div /> : (
+                <div>
+                  <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
+                  {inst.status === 'RUNNING'
+                    ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, displayCurrency)}</div>
+                    : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
+                      ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
+                      : null
+                  }
+                  {inst.status === 'RUNNING' && (
+                    <div className={styles.costToDate}>
+                      {currencySymbol(displayCurrency)}{calcCostToDate(inst).toFixed(2)} this mo
+                    </div>
+                  )}
+                </div>
+              )}
               <div className={styles.ipCell}>
                 {inst.public_ip && <div>{inst.public_ip}</div>}
                 {inst.private_ip && <div className={styles.instId}>{inst.private_ip}</div>}

@@ -242,6 +242,42 @@ export default function InstanceDrawer({
                 </div>
               </div>
 
+              {/* Coolify app details */}
+              {inst.resource_type === 'app' && (inst.app_urls?.length > 0 || inst.git_repository) && (
+                <>
+                  <hr className={styles.drawerDivider} />
+                  <div className={styles.drawerSection}>
+                    <div className={styles.drawerSectionTitle}>App</div>
+                    <div className={styles.drawerGrid}>
+                      {inst.app_urls?.length > 0 && (
+                        <>
+                          <span className={styles.drawerLabel}>URLs</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {inst.app_urls.map((url) => (
+                              <a key={url} href={`https://${url}`} target="_blank" rel="noopener noreferrer" className={styles.domainTag}>
+                                {url}
+                              </a>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {inst.git_repository && (
+                        <>
+                          <span className={styles.drawerLabel}>Repo</span>
+                          <span className={styles.drawerMono} style={{ wordBreak: 'break-all' }}>{inst.git_repository}</span>
+                        </>
+                      )}
+                      {inst.git_branch && (
+                        <>
+                          <span className={styles.drawerLabel}>Branch</span>
+                          <span className={styles.drawerMono}>{inst.git_branch}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <hr className={styles.drawerDivider} />
 
               {/* Cost */}

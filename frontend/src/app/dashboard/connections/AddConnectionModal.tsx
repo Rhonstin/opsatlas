@@ -9,13 +9,14 @@ interface Props {
   onCreated: (conn: Connection) => void;
 }
 
-type Provider = 'gcp' | 'aws' | 'hetzner';
+type Provider = 'gcp' | 'aws' | 'hetzner' | 'coolify';
 type Step = 1 | 2 | 3;
 
 const PROVIDERS: { id: Provider; label: string; description: string; icon: string }[] = [
   { id: 'gcp', label: 'Google Cloud', description: 'Service account JSON key', icon: '☁' },
   { id: 'aws', label: 'Amazon Web Services', description: 'IAM access key & secret', icon: '▲' },
   { id: 'hetzner', label: 'Hetzner Cloud', description: 'API read/write token', icon: '⬡' },
+  { id: 'coolify', label: 'Coolify', description: 'Self-hosted PaaS — base URL + API token', icon: '⚡' },
 ];
 
 export default function AddConnectionModal({ onClose, onCreated }: Props) {
@@ -28,6 +29,8 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
   const [awsKeyId, setAwsKeyId] = useState('');
   const [awsSecret, setAwsSecret] = useState('');
   const [hetznerToken, setHetznerToken] = useState('');
+  const [coolifyBaseUrl, setCoolifyBaseUrl] = useState('');
+  const [coolifyToken, setCoolifyToken] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [creating, setCreating] = useState(false);
@@ -56,6 +59,7 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
   function getCredentials(): unknown | null {
     if (provider === 'aws') return { access_key_id: awsKeyId.trim(), secret_access_key: awsSecret.trim() };
     if (provider === 'hetzner') return { token: hetznerToken.trim() };
+    if (provider === 'coolify') return { base_url: coolifyBaseUrl.trim(), api_token: coolifyToken.trim() };
     try { return JSON.parse(credentialsRaw); } catch { return null; }
   }
 
@@ -160,6 +164,11 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
 
   const gcpPlaceholder = '{\n  "type": "service_account",\n  "project_id": "my-project",\n  "private_key_id": "...",\n  ...\n}';
   const totalSteps = provider === 'gcp' ? 3 : 2;
+  const namePlaceholder =
+    provider === 'gcp' ? 'My GCP Project' :
+    provider === 'hetzner' ? 'My Hetzner Project' :
+    provider === 'aws' ? 'My AWS Account' :
+    'My Coolify Server';
 
   return (
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -219,7 +228,7 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={provider === 'gcp' ? 'My GCP Project' : provider === 'hetzner' ? 'My Hetzner Project' : 'My AWS Account'}
+                placeholder={namePlaceholder}
                 required
                 autoFocus
               />
@@ -248,6 +257,23 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
                   placeholder="Paste your Hetzner API token here" required className={styles.textarea} spellCheck={false} />
                 <span className={styles.hint}>Read &amp; Write token — Hetzner Cloud Console → Security → API Tokens</span>
               </div>
+            )}
+
+            {provider === 'coolify' && (
+              <>
+                <div className={styles.field}>
+                  <label>Coolify base URL</label>
+                  <input type="url" value={coolifyBaseUrl} onChange={(e) => setCoolifyBaseUrl(e.target.value)}
+                    placeholder="https://coolify.example.com" required spellCheck={false} />
+                  <span className={styles.hint}>The URL where your Coolify instance is hosted</span>
+                </div>
+                <div className={styles.field}>
+                  <label>API Token</label>
+                  <textarea rows={3} value={coolifyToken} onChange={(e) => setCoolifyToken(e.target.value)}
+                    placeholder="Paste your Coolify API token here" required className={styles.textarea} spellCheck={false} />
+                  <span className={styles.hint}>Coolify → Profile → API Tokens → Create new token</span>
+                </div>
+              </>
             )}
 
             {provider === 'gcp' && (

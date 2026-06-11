@@ -38,8 +38,7 @@ jobs:
           - image: frontend
             context: ./frontend
             dockerfile: ./frontend/Dockerfile
-            build-args: |
-              NEXT_PUBLIC_API_URL=http://localhost:4000
+            build-args: ""
 
     steps:
       - name: Checkout

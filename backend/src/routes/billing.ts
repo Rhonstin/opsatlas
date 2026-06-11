@@ -1,12 +1,12 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { refreshBillingForUser, currentPeriod } from '../lib/billing-refresh';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
 /** GET /billing/actuals?period=YYYY-MM */
-router.get('/actuals', async (req: AuthRequest, res: Response) => {
+router.get('/actuals', requireAdmin, async (req: AuthRequest, res: Response) => {
   const period = (req.query.period as string) || currentPeriod();
 
   const rows = await db('billing_actuals')
@@ -32,7 +32,7 @@ router.get('/actuals', async (req: AuthRequest, res: Response) => {
 });
 
 /** GET /billing/periods — list months for which we have data */
-router.get('/periods', async (req: AuthRequest, res: Response) => {
+router.get('/periods', requireAdmin, async (req: AuthRequest, res: Response) => {
   const periods = await db('billing_actuals')
     .join('cloud_connections', 'billing_actuals.connection_id', 'cloud_connections.id')
     .where('cloud_connections.user_id', req.userId)
@@ -48,7 +48,7 @@ router.get('/periods', async (req: AuthRequest, res: Response) => {
  * Body: { period?: "YYYY-MM" }   (defaults to current month)
  * Fetches actuals for all eligible connections and upserts into DB.
  */
-router.post('/refresh', async (req: AuthRequest, res: Response) => {
+router.post('/refresh', requireAdmin, async (req: AuthRequest, res: Response) => {
   const period = (req.body.period as string | undefined) || currentPeriod();
   const results = await refreshBillingForUser(req.userId!, period);
   res.json({ period, results });

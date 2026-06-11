@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -42,7 +42,7 @@ export const api = {
     }),
 
   login: (email: string, password: string) =>
-    request<{ token: string; user: { id: string; email: string } }>('/auth/login', {
+    request<{ token: string; user: { id: string; email: string } } | { mfa_required: true; mfa_token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
@@ -51,11 +51,12 @@ export const api = {
     fetch(`${BASE}/auth/providers`)
       .then((r) => r.json()) as Promise<{
         authentik: { enabled: boolean; url?: string; clientId?: string };
+        google: { enabled: boolean; clientId?: string; allowedDomain?: string | null };
       }>,
 
   getServerConfig: () =>
     fetch(`${BASE}/auth/config`)
-      .then((r) => r.json()) as Promise<{ allowRegistrations: boolean }>,
+      .then((r) => r.json()) as Promise<{ allowRegistrations: boolean; preferredCurrency: string }>,
 
   setAllowRegistrations: (allow: boolean) =>
     request<{ ok: boolean }>('/auth/config', {
@@ -63,10 +64,56 @@ export const api = {
       body: JSON.stringify({ allowRegistrations: allow }),
     }),
 
+  setPreferredCurrency: (currency: string) =>
+    request<{ ok: boolean }>('/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ preferredCurrency: currency }),
+    }),
+
+  // MFA
+  getMfaStatus: () =>
+    request<{ mfa_enabled: boolean }>('/auth/mfa/status'),
+
+  setupMfa: () =>
+    request<{ secret: string; otpauth_url: string; qr_data_url: string }>('/auth/mfa/setup'),
+
+  verifyMfaSetup: (code: string) =>
+    request<{ ok: boolean }>('/auth/mfa/verify-setup', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  disableMfa: (code: string) =>
+    request<{ ok: boolean }>('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  confirmMfa: (mfa_token: string, code: string) =>
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/mfa/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ mfa_token, code }),
+    }),
+
   authentikCallback: (code: string, redirectUri: string) =>
-    request<{ token: string; user: { id: string; email: string } }>('/auth/authentik/callback', {
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/authentik/callback', {
       method: 'POST',
       body: JSON.stringify({ code, redirectUri }),
+    }),
+
+  googleCallback: (code: string, redirectUri: string) =>
+    request<{ token: string; user: { id: string; email: string; role?: string } }>('/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirectUri }),
+    }),
+
+  getGoogleConfig: () =>
+    request<{ clientId: string; hasSecret: boolean; allowedDomain: string }>('/auth/google-config'),
+
+  saveGoogleConfig: (data: { clientId: string; clientSecret?: string; allowedDomain?: string }) =>
+    request<{ ok: boolean }>('/auth/google-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 
   getSsoConfig: () =>
@@ -217,7 +264,7 @@ export interface SyncRun {
 
 export interface Instance {
   id: string;
-  provider: 'gcp' | 'aws' | 'hetzner';
+  provider: 'gcp' | 'aws' | 'hetzner' | 'coolify';
   resource_type: string;        // 'compute' | 'cloudsql'
   connection_id: string;
   connection_name: string;
@@ -235,6 +282,8 @@ export interface Instance {
   estimated_hourly_cost: string | null;
   estimated_monthly_cost: string | null;
   project_or_account_id: string | null;
+  project_name: string | null;
+  project_external_id: string | null;
   created_at: string;
 }
 
@@ -254,7 +303,7 @@ export interface SavedProject {
 
 export interface Connection {
   id: string;
-  provider: 'gcp' | 'aws' | 'hetzner';
+  provider: 'gcp' | 'aws' | 'hetzner' | 'coolify';
   name: string;
   status: 'active' | 'error' | 'pending';
   last_sync_at: string | null;
@@ -327,6 +376,9 @@ export interface InstanceDetail extends Instance {
   project_name: string | null;
   project_external_id: string | null;
   database_version: string | null;
+  app_urls: string[];
+  git_repository: string | null;
+  git_branch: string | null;
 }
 
 export interface BillingActual {
@@ -360,6 +412,9 @@ export interface AutoUpdateRun {
   status: 'success' | 'error' | 'running';
   error: string | null;
   connections_synced: number;
+  instances_synced: number;
+  dns_records_synced: number;
+  cost_rows_upserted: number;
   started_at: string;
   finished_at: string | null;
 }

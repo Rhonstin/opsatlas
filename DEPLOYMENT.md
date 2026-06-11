@@ -54,7 +54,7 @@ Generate secrets:
 
 ```bash
 openssl rand -hex 32    # → JWT_SECRET (64 hex chars)
-openssl rand -base64 24 # → ENCRYPTION_KEY (use first 32 chars)
+openssl rand -hex 16    # → ENCRYPTION_KEY (32 hex chars; min 32 chars required)
 ```
 
 **Frontend** — create `frontend/.env.local`:

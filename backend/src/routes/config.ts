@@ -7,7 +7,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { encrypt, decrypt } from '../lib/crypto';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -36,8 +36,8 @@ export interface ConfigExport {
   }>;
 }
 
-/** GET /config/export */
-router.get('/export', async (req: AuthRequest, res: Response) => {
+/** GET /config/export — returns decrypted credentials, admin only */
+router.get('/export', requireAdmin, async (req: AuthRequest, res: Response) => {
   const [cloudConns, dnsConns, policies] = await Promise.all([
     db('cloud_connections').where({ user_id: req.userId }),
     db('dns_connections').where({ user_id: req.userId }),
@@ -73,7 +73,7 @@ router.get('/export', async (req: AuthRequest, res: Response) => {
 });
 
 /** POST /config/import */
-router.post('/import', async (req: AuthRequest, res: Response) => {
+router.post('/import', requireAdmin, async (req: AuthRequest, res: Response) => {
   const body = req.body as Partial<ConfigExport>;
 
   if (!body || body.version !== 1) {

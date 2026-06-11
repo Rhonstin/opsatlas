@@ -2,20 +2,24 @@ import { Router, Response } from 'express';
 import db from '../db';
 import { encrypt, decrypt } from '../lib/crypto';
 import { testCloudflareToken } from '../dns/cloudflare';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
-/** GET /dns-connections — list all DNS connections for the user */
+/** GET /dns-connections — list DNS connections visible to the user */
 router.get('/', async (req: AuthRequest, res: Response) => {
+  const scopeIds = req.userRole === 'viewer'
+    ? await db('users').where({ role: 'admin' }).pluck('id')
+    : [req.userId!];
+
   const rows = await db('dns_connections')
-    .where({ user_id: req.userId })
+    .whereIn('user_id', scopeIds.length ? scopeIds : [req.userId!])
     .select('id', 'provider', 'name', 'status', 'last_sync_at', 'last_error', 'created_at');
   res.json(rows);
 });
 
-/** POST /dns-connections — create a new DNS connection */
-router.post('/', async (req: AuthRequest, res: Response) => {
+/** POST /dns-connections — create a new DNS connection (admin only) */
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   const { provider, name, credentials } = req.body as {
     provider?: string;
     name?: string;
@@ -39,8 +43,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   res.status(201).json(conn);
 });
 
-/** DELETE /dns-connections/:id */
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+/** DELETE /dns-connections/:id (admin only) */
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   const deleted = await db('dns_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .delete();
@@ -52,8 +56,8 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   res.status(204).send();
 });
 
-/** POST /dns-connections/:id/test — validate credentials */
-router.post('/:id/test', async (req: AuthRequest, res: Response) => {
+/** POST /dns-connections/:id/test (admin only) */
+router.post('/:id/test', requireAdmin, async (req: AuthRequest, res: Response) => {
   const conn = await db('dns_connections')
     .where({ id: req.params.id, user_id: req.userId })
     .first();

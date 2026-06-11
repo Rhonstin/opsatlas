@@ -29,6 +29,7 @@ const REGION_SUFFIXES: [string, string][] = [
 ];
 
 interface SkuUnitPrice {
+  currencyCode?: string;
   units?: string;   // string representation of int64
   nanos?: number;
 }
@@ -51,7 +52,7 @@ interface SkuResponse {
 
 function parseSku(
   sku: Sku,
-): { family: string; resource: 'cpu' | 'ram'; regionGroup: string; price: number } | null {
+): { family: string; resource: 'cpu' | 'ram'; regionGroup: string; price: number; currency: string } | null {
   const { description, category, pricingInfo } = sku;
 
   if (category?.usageType !== 'OnDemand') return null;
@@ -84,18 +85,22 @@ function parseSku(
   const up = rates[0].unitPrice;
   const price = parseInt(up?.units ?? '0') + (up?.nanos ?? 0) / 1e9;
   if (price <= 0) return null;
+  const currency = up?.currencyCode ?? 'USD';
 
-  return { family, resource: isCpu ? 'cpu' : 'ram', regionGroup, price };
+  return { family, resource: isCpu ? 'cpu' : 'ram', regionGroup, price, currency };
 }
 
 /**
  * Fetch all Compute Engine SKUs from the billing catalog and upsert into DB.
  * Safe to call on every sync — no-ops if cache is fresh.
  */
+/**
+ * Returns the detected currency code of the GCP billing catalog (e.g. "USD", "SGD").
+ */
 export async function refreshBillingCache(
   credentials: Record<string, unknown>,
   db: Knex,
-): Promise<void> {
+): Promise<{ currency: string }> {
   const auth = new GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -104,6 +109,7 @@ export async function refreshBillingCache(
 
   let pageToken: string | undefined;
   const entries: { family: string; resource: string; region_group: string; price: number }[] = [];
+  let detectedCurrency = 'USD';
 
   do {
     const url = new URL(BILLING_API);
@@ -118,6 +124,7 @@ export async function refreshBillingCache(
     for (const sku of data.skus ?? []) {
       const parsed = parseSku(sku);
       if (parsed) {
+        detectedCurrency = parsed.currency;
         entries.push({
           family: parsed.family,
           resource: parsed.resource,
@@ -130,7 +137,7 @@ export async function refreshBillingCache(
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  if (!entries.length) return;
+  if (!entries.length) return { currency: detectedCurrency };
 
   const now = new Date();
   // Upsert each entry — on conflict update price and fetched_at
@@ -140,6 +147,9 @@ export async function refreshBillingCache(
       .onConflict(['family', 'resource', 'region_group'])
       .merge(['price', 'fetched_at']);
   }
+
+  console.log(`[billing] price cache refreshed — ${entries.length} SKUs, currency: ${detectedCurrency}`);
+  return { currency: detectedCurrency };
 }
 
 /**

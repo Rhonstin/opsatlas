@@ -3,8 +3,10 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Connection, DnsConnection, ConfigExport, ConfigImportResult } from '@/lib/api';
+import { encryptConfig, decryptConfig, isEncryptedEnvelope } from '@/lib/config-crypto';
 import { useSort } from '@/lib/useSort';
 import { useToast } from '@/lib/toast';
+import { getUser } from '@/lib/auth';
 import AddConnectionModal from '../connections/AddConnectionModal';
 import EditConnectionModal from '../connections/EditConnectionModal';
 import ProjectsModal from '../connections/ProjectsModal';
@@ -15,7 +17,7 @@ import dnsStyles from '../dns/dns.module.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'config';
+type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'config' | 'security';
 
 // ─── Connections Tab ──────────────────────────────────────────────────────────
 
@@ -41,9 +43,9 @@ function ConnectionsTab() {
     try {
       const data = await api.getConnections();
       setConnections(data);
-      const gcpConns = data.filter((c) => c.provider === 'gcp');
+      const projectConns = data.filter((c) => c.provider === 'gcp' || c.provider === 'coolify');
       const counts = await Promise.all(
-        gcpConns.map((c) =>
+        projectConns.map((c) =>
           api.getSelectedProjects(c.id)
             .then((ps) => [c.id, ps.length] as [string, number])
             .catch(() => [c.id, 0] as [string, number]),
@@ -156,6 +158,12 @@ function ConnectionsTab() {
                         ? `${projectCounts[conn.id]} project${projectCounts[conn.id] !== 1 ? 's' : ''}`
                         : '—'}
                     </button>
+                  ) : conn.provider === 'coolify' ? (
+                    <span className={connStyles.muted}>
+                      {projectCounts[conn.id] != null
+                        ? `${projectCounts[conn.id]} project${projectCounts[conn.id] !== 1 ? 's' : ''}`
+                        : '—'}
+                    </span>
                   ) : <span className={connStyles.muted}>—</span>}
                 </span>
                 <span className={connStyles.muted}>
@@ -166,7 +174,7 @@ function ConnectionsTab() {
                   <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleTest(conn.id)}>
                     {testResults[conn.id] ?? 'Test'}
                   </button>
-                  {['gcp', 'hetzner', 'aws'].includes(conn.provider) && (
+                  {['gcp', 'hetzner', 'aws', 'coolify'].includes(conn.provider) && (
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
                       {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                     </button>
@@ -499,7 +507,8 @@ function SsoTab() {
     if (!url || !clientId) return;
     const state = crypto.randomUUID();
     sessionStorage.setItem('oauth_state', state);
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    sessionStorage.setItem('oauth_provider', 'authentik');
+    const redirectUri = `${window.location.origin}/oauth/callback`;
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -599,10 +608,356 @@ function SsoTab() {
           <strong>Authentik setup</strong>
           <ol>
             <li>In Authentik, create an <em>OAuth2/OpenID Provider</em> application</li>
-            <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/auth/callback</code></li>
+            <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/oauth/callback</code></li>
             <li>Enable scopes: <code>openid email profile</code></li>
           </ol>
         </div>
+      </div>
+
+      <GoogleSsoCard />
+    </section>
+  );
+}
+
+function GoogleSsoCard() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [hasExistingSecret, setHasExistingSecret] = useState(false);
+  const [changeSecret, setChangeSecret] = useState(false);
+  const [allowedDomain, setAllowedDomain] = useState('');
+
+  useEffect(() => {
+    api.getGoogleConfig()
+      .then((cfg) => {
+        setClientId(cfg.clientId);
+        setHasExistingSecret(cfg.hasSecret);
+        setAllowedDomain(cfg.allowedDomain);
+        setEnabled(!!(cfg.clientId && cfg.hasSecret));
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clientId.trim()) { toast('error', 'Client ID is required'); return; }
+    if (!hasExistingSecret && !clientSecret.trim()) { toast('error', 'Client secret is required'); return; }
+    setSaving(true);
+    try {
+      const payload: { clientId: string; clientSecret?: string; allowedDomain?: string } = {
+        clientId: clientId.trim(),
+        allowedDomain: allowedDomain.trim(),
+      };
+      if (changeSecret || !hasExistingSecret) payload.clientSecret = clientSecret;
+      await api.saveGoogleConfig(payload);
+      setHasExistingSecret(true);
+      setChangeSecret(false);
+      setClientSecret('');
+      setEnabled(true);
+      toast('success', 'Google OAuth configuration saved');
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function testGoogle() {
+    if (!clientId) return;
+    const state = crypto.randomUUID();
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_provider', 'google');
+    const redirectUri = `${window.location.origin}/oauth/callback`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      access_type: 'online',
+    });
+    window.open(`https://accounts.google.com/o/oauth2/v2/auth?${params}`, '_blank');
+  }
+
+  return (
+    <div className={styles.card} style={{ marginTop: 16 }}>
+      <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        Google Workspace
+        {!loading && (
+          <span className={`badge ${enabled ? 'badge-active' : 'badge-pending'}`}>
+            {enabled ? 'Configured' : 'Not configured'}
+          </span>
+        )}
+        {enabled && (
+          <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }} onClick={testGoogle}>
+            Test login
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
+      ) : (
+        <form onSubmit={handleSave} className={styles.ssoForm}>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Client ID</label>
+            <input
+              type="text"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="000000000000-xxxx.apps.googleusercontent.com"
+              className={styles.ssoInput}
+            />
+          </div>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Client Secret</label>
+            {hasExistingSecret && !changeSecret ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className={styles.ssoSecretMasked}>••••••••••••</span>
+                <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setChangeSecret(true)}>
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={hasExistingSecret ? 'Enter new secret' : 'GOCSPX-…'}
+                  className={styles.ssoInput}
+                  style={{ flex: 1 }}
+                  autoFocus={changeSecret}
+                />
+                {hasExistingSecret && (
+                  <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className={styles.ssoField}>
+            <label className={styles.ssoFieldLabel}>Allowed domain <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input
+              type="text"
+              value={allowedDomain}
+              onChange={(e) => setAllowedDomain(e.target.value)}
+              placeholder="yourcompany.com"
+              className={styles.ssoInput}
+            />
+            <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Restrict sign-in to this Google Workspace domain. Leave empty to allow any Google account.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className={styles.ssoInstructions}>
+        <strong>Google Cloud Console setup</strong>
+        <ol>
+          <li>Go to <em>APIs &amp; Services → Credentials</em> and create an OAuth 2.0 Client ID</li>
+          <li>Set the redirect URI to <code>{typeof window !== 'undefined' ? window.location.origin : 'https://yourapp.com'}/oauth/callback</code></li>
+          <li>Google users sign in as <strong>viewers</strong> — they can see instances but not billing or API keys</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+// ─── Security Tab (MFA) ───────────────────────────────────────────────────────
+
+type MfaStep = 'idle' | 'setup' | 'verifying' | 'disabling';
+
+function SecurityTab() {
+  const { toast } = useToast();
+  const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [step, setStep] = useState<MfaStep>('idle');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [secret, setSecret] = useState('');
+  const [code, setCode] = useState('');
+  const [working, setWorking] = useState(false);
+  const [codeError, setCodeError] = useState('');
+
+  useEffect(() => {
+    api.getMfaStatus()
+      .then((r) => setMfaEnabled(r.mfa_enabled))
+      .catch(() => setMfaEnabled(false));
+  }, []);
+
+  async function handleSetup() {
+    setWorking(true);
+    setCodeError('');
+    try {
+      const res = await api.setupMfa();
+      setSecret(res.secret);
+      setQrDataUrl(res.qr_data_url);
+      setCode('');
+      setStep('setup');
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Setup failed');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setCodeError('');
+    setWorking(true);
+    try {
+      await api.verifyMfaSetup(code);
+      setMfaEnabled(true);
+      setStep('idle');
+      toast('success', 'Two-factor authentication enabled');
+    } catch (err: unknown) {
+      setCodeError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleDisable(e: React.FormEvent) {
+    e.preventDefault();
+    setCodeError('');
+    setWorking(true);
+    try {
+      await api.disableMfa(code);
+      setMfaEnabled(false);
+      setStep('idle');
+      toast('success', 'Two-factor authentication disabled');
+    } catch (err: unknown) {
+      setCodeError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function cancelSetup() {
+    setStep('idle');
+    setCode('');
+    setCodeError('');
+    setQrDataUrl('');
+    setSecret('');
+  }
+
+  return (
+    <section>
+      <div className={styles.sectionHeader}>
+        <div>
+          <div className={styles.sectionTitle}>Security</div>
+          <div className={styles.sectionDesc}>Two-factor authentication and account security settings</div>
+        </div>
+      </div>
+
+      <div className={styles.card}>
+        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          Two-factor authentication
+          {mfaEnabled !== null && (
+            <span className={`badge ${mfaEnabled ? 'badge-active' : 'badge-pending'}`}>
+              {mfaEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          )}
+        </div>
+        <div className={styles.cardDesc}>
+          Use an authenticator app (Google Authenticator, Authy, 1Password, etc.) to generate time-based one-time codes.
+        </div>
+
+        {step === 'idle' && mfaEnabled !== null && (
+          <div style={{ marginTop: 16 }}>
+            {mfaEnabled ? (
+              <button className="btn-danger" style={{ fontSize: 13 }} onClick={() => { setStep('disabling'); setCode(''); setCodeError(''); }}>
+                Disable MFA
+              </button>
+            ) : (
+              <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSetup} disabled={working}>
+                {working ? 'Setting up…' : 'Set up MFA'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {step === 'setup' && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+              Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.
+            </div>
+            {qrDataUrl && (
+              <div style={{ marginBottom: 16, display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <img src={qrDataUrl} alt="TOTP QR code" style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Or enter the key manually:</div>
+                  <code style={{ fontSize: 13, letterSpacing: '0.1em', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
+                    {secret}
+                  </code>
+                </div>
+              </div>
+            )}
+            <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+              <div className={styles.ssoField}>
+                <label className={styles.ssoFieldLabel}>Authenticator code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  autoFocus
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  autoComplete="one-time-code"
+                />
+              </div>
+              {codeError && <div className={styles.error}>{codeError}</div>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-ghost" onClick={cancelSetup}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={working || code.length !== 6}>
+                  {working ? 'Verifying…' : 'Enable MFA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {step === 'disabling' && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+              Enter your current authenticator code to disable MFA.
+            </div>
+            <form onSubmit={handleDisable} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+              <div className={styles.ssoField}>
+                <label className={styles.ssoFieldLabel}>Authenticator code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  autoFocus
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  autoComplete="one-time-code"
+                />
+              </div>
+              {codeError && <div className={styles.error}>{codeError}</div>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-ghost" onClick={() => { setStep('idle'); setCode(''); setCodeError(''); }}>Cancel</button>
+                <button type="submit" className="btn-danger" disabled={working || code.length !== 6}>
+                  {working ? 'Disabling…' : 'Disable MFA'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -610,17 +965,63 @@ function SsoTab() {
 
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
+const CURRENCIES = [
+  { code: 'USD', label: 'USD — US Dollar ($)' },
+  { code: 'EUR', label: 'EUR — Euro (€)' },
+  { code: 'SGD', label: 'SGD — Singapore Dollar (S$)' },
+  { code: 'GBP', label: 'GBP — British Pound (£)' },
+  { code: 'AUD', label: 'AUD — Australian Dollar (A$)' },
+  { code: 'CAD', label: 'CAD — Canadian Dollar (CA$)' },
+  { code: 'JPY', label: 'JPY — Japanese Yen (¥)' },
+  { code: 'INR', label: 'INR — Indian Rupee (₹)' },
+  { code: 'HKD', label: 'HKD — Hong Kong Dollar (HK$)' },
+  { code: 'CHF', label: 'CHF — Swiss Franc (Fr)' },
+];
+
 function ConfigTab() {
   const { toast } = useToast();
-  const [exporting, setExporting] = useState(false);
   const [allowRegistrations, setAllowRegistrations] = useState<boolean | null>(null);
   const [togglingReg, setTogglingReg] = useState(false);
 
+  // Currency state
+  const [preferredCurrency, setPreferredCurrency] = useState('USD');
+  const [savingCurrency, setSavingCurrency] = useState(false);
+
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportPw, setExportPw] = useState('');
+  const [exportPwConfirm, setExportPwConfirm] = useState('');
+  const [exportPwError, setExportPwError] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  // Import state
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ConfigImportResult | null>(null);
+  const [importError, setImportError] = useState('');
+  const [pendingFile, setPendingFile] = useState<string | null>(null); // raw file text awaiting password
+  const [importPw, setImportPw] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     api.getServerConfig()
-      .then((cfg) => setAllowRegistrations(cfg.allowRegistrations ?? true))
+      .then((cfg) => {
+        setAllowRegistrations(cfg.allowRegistrations ?? true);
+        setPreferredCurrency(cfg.preferredCurrency ?? 'USD');
+      })
       .catch(() => setAllowRegistrations(true));
   }, []);
+
+  async function handleSaveCurrency() {
+    setSavingCurrency(true);
+    try {
+      await api.setPreferredCurrency(preferredCurrency);
+      toast('success', `Currency set to ${preferredCurrency} — re-sync connections to apply`);
+    } catch (err: unknown) {
+      toast('error', err instanceof Error ? err.message : 'Failed to save currency');
+    } finally {
+      setSavingCurrency(false);
+    }
+  }
 
   async function handleToggleRegistrations() {
     if (allowRegistrations === null) return;
@@ -636,39 +1037,90 @@ function ConfigTab() {
       setTogglingReg(false);
     }
   }
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ConfigImportResult | null>(null);
-  const [importError, setImportError] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  async function handleExport() {
+  // ── Export ──────────────────────────────────────────────────────────────────
+
+  function openExportModal() {
+    setExportPw('');
+    setExportPwConfirm('');
+    setExportPwError('');
+    setShowExportModal(true);
+  }
+
+  async function handleExport(e: React.FormEvent) {
+    e.preventDefault();
+    if (exportPw.length < 8) { setExportPwError('Password must be at least 8 characters'); return; }
+    if (exportPw !== exportPwConfirm) { setExportPwError('Passwords do not match'); return; }
+    setExportPwError('');
     setExporting(true);
     try {
       const data = await api.exportConfig();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const plaintext = JSON.stringify(data, null, 2);
+      const encrypted = await encryptConfig(plaintext, exportPw);
+      const blob = new Blob([encrypted], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `opsatlas-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `opsatlas-config-${new Date().toISOString().slice(0, 10)}.opsatlas`;
       a.click();
       URL.revokeObjectURL(url);
+      setShowExportModal(false);
+      toast('success', 'Config exported (AES-256-GCM encrypted)');
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Export failed');
+      setExportPwError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(false);
     }
   }
+
+  // ── Import ──────────────────────────────────────────────────────────────────
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportError('');
     setImportResult(null);
+    setImportPw('');
+
+    const text = await file.text();
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setImportError('Invalid file — not valid JSON'); return; }
+
+    if (isEncryptedEnvelope(parsed)) {
+      // Encrypted — need password before we can import
+      setPendingFile(text);
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
+    // Plain JSON (legacy) — import directly
+    setPendingFile(null);
+    await doImport(text);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  async function handleDecryptAndImport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pendingFile) return;
+    setImportError('');
     setImporting(true);
     try {
-      const text = await file.text();
+      const plaintext = await decryptConfig(pendingFile, importPw);
+      await doImport(plaintext);
+      setPendingFile(null);
+      setImportPw('');
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : 'Decryption failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function doImport(text: string) {
+    setImporting(true);
+    try {
       let parsed: ConfigExport;
-      try { parsed = JSON.parse(text) as ConfigExport; } catch { throw new Error('Invalid JSON file'); }
+      try { parsed = JSON.parse(text) as ConfigExport; } catch { throw new Error('Invalid JSON'); }
       if (!parsed.version || !Array.isArray(parsed.cloud_connections)) throw new Error('Not a valid opsatlas config file');
       const result = await api.importConfig(parsed);
       setImportResult(result);
@@ -676,7 +1128,6 @@ function ConfigTab() {
       setImportError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setImporting(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -689,10 +1140,52 @@ function ConfigTab() {
 
   return (
     <section>
+      {/* Export password modal */}
+      {showExportModal && (
+        <div className={styles.pwOverlay} onClick={(e) => e.target === e.currentTarget && setShowExportModal(false)}>
+          <div className={styles.pwModal}>
+            <div className={styles.pwTitle}>Export config</div>
+            <div className={styles.pwDesc}>
+              Set a password to encrypt the file with AES-256-GCM. You will need it to import the backup.
+            </div>
+            <form onSubmit={handleExport} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className={styles.pwField}>
+                <label className={styles.pwLabel}>Password</label>
+                <input
+                  type="password"
+                  className={styles.pwInput}
+                  value={exportPw}
+                  onChange={(e) => setExportPw(e.target.value)}
+                  placeholder="Min. 8 characters"
+                  autoFocus
+                />
+              </div>
+              <div className={styles.pwField}>
+                <label className={styles.pwLabel}>Confirm password</label>
+                <input
+                  type="password"
+                  className={styles.pwInput}
+                  value={exportPwConfirm}
+                  onChange={(e) => setExportPwConfirm(e.target.value)}
+                  placeholder="Repeat password"
+                />
+              </div>
+              {exportPwError && <div className={styles.pwError}>{exportPwError}</div>}
+              <div className={styles.pwActions}>
+                <button type="button" className="btn-ghost" onClick={() => setShowExportModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={exporting}>
+                  {exporting ? 'Encrypting…' : 'Export & Download'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className={styles.sectionHeader}>
         <div>
           <div className={styles.sectionTitle}>Configuration</div>
-          <div className={styles.sectionDesc}>Export or import all connections and policies as JSON</div>
+          <div className={styles.sectionDesc}>Export or import all connections and policies</div>
         </div>
       </div>
 
@@ -723,34 +1216,88 @@ function ConfigTab() {
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <div className={styles.cardTitle}>Export</div>
+            <div className={styles.cardTitle}>Display currency</div>
             <div className={styles.cardDesc}>
-              Download all cloud connections, DNS connections, and auto-update policies.
-              <span className={styles.warning}> Credentials included in plaintext — keep secure.</span>
+              All estimated costs and billing actuals are converted to this currency during sync using live exchange rates (Frankfurter / ECB). Re-sync connections after changing.
             </div>
           </div>
-          <button className="btn-primary" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exporting…' : 'Export'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <select
+              value={preferredCurrency}
+              onChange={(e) => setPreferredCurrency(e.target.value)}
+              style={{ width: 230 }}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+            <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSaveCurrency} disabled={savingCurrency}>
+              {savingCurrency ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <div className={styles.cardTitle}>Import</div>
+            <div className={styles.cardTitle}>Export</div>
+            <div className={styles.cardDesc}>
+              Download all cloud connections, DNS connections, and auto-update policies.
+              Credentials are encrypted with your chosen password using AES-256-GCM.
+            </div>
+          </div>
+          <button className="btn-primary" onClick={openExportModal}>Export</button>
+        </div>
+      </div>
+
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <div className={styles.cardTitle}>
+              Import
+              {pendingFile && <span className={styles.encryptedBadge}>🔒 encrypted</span>}
+            </div>
             <div className={styles.cardDesc}>
               Restore connections and policies from a previously exported file.
               Existing items (matched by provider + name) are skipped.
             </div>
           </div>
-          <div>
-            <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
-            <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importing}>
-              {importing ? 'Importing…' : 'Import file'}
-            </button>
-          </div>
+          {!pendingFile && (
+            <div>
+              <input ref={fileRef} type="file" accept=".json,.opsatlas,application/json" style={{ display: 'none' }} onChange={handleFileChange} />
+              <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={importing}>
+                {importing ? 'Importing…' : 'Import file'}
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Decrypt form for encrypted files */}
+        {pendingFile && (
+          <form onSubmit={handleDecryptAndImport} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className={styles.pwField}>
+              <label className={styles.pwLabel}>Decryption password</label>
+              <input
+                type="password"
+                className={styles.pwInput}
+                value={importPw}
+                onChange={(e) => setImportPw(e.target.value)}
+                placeholder="Enter the password used during export"
+                autoFocus
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn-ghost" onClick={() => { setPendingFile(null); setImportPw(''); setImportError(''); }}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={importing}>
+                {importing ? 'Decrypting…' : 'Decrypt & Import'}
+              </button>
+            </div>
+          </form>
+        )}
+
         {importError && <div className={styles.error}>{importError}</div>}
         {importResult && (
           <div className={styles.resultBox}>
@@ -782,12 +1329,20 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'dns', label: 'DNS' },
   { id: 'billing', label: 'Billing' },
   { id: 'sso', label: 'SSO' },
+  { id: 'security', label: 'Security' },
   { id: 'config', label: 'Config' },
 ];
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  useEffect(() => {
+    if (getUser()?.role === 'viewer') router.replace('/dashboard');
+  }, [router]);
+
+  if (getUser()?.role === 'viewer') return null;
+
   const raw = searchParams.get('tab') ?? 'connections';
   const tab = (TABS.some((t) => t.id === raw) ? raw : 'connections') as Tab;
 
@@ -816,6 +1371,7 @@ function SettingsContent() {
         {tab === 'dns' && <DnsTab />}
         {tab === 'billing' && <BillingTab />}
         {tab === 'sso' && <SsoTab />}
+        {tab === 'security' && <SecurityTab />}
         {tab === 'config' && <ConfigTab />}
       </div>
     </div>

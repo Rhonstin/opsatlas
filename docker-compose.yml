@@ -5,8 +5,6 @@ services:
       POSTGRES_DB: opsatlas
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,9 +14,9 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/rhonstin/opsatlas/backend:main
-    ports:
-      - '4000:4000'
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/opsatlas
       JWT_SECRET: ${JWT_SECRET}
@@ -29,9 +27,11 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/rhonstin/opsatlas/frontend:main
-    ports:
-      - '3000:3000'
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     depends_on:
       - backend
 

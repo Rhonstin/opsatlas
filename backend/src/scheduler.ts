@@ -9,18 +9,60 @@ import { listGcpInstances } from './gcp/sync';
 import { refreshBillingCache, loadPriceCache, isCacheStale } from './gcp/billing';
 import { listHetznerServers } from './hetzner/sync';
 import { listAwsInstances } from './aws/ec2';
+import { listCoolifyApps } from './coolify/sync';
 import { listCloudSqlInstances } from './gcp/cloudsql';
 import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
 import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
+import { getRate, convert } from './lib/exchange-rates';
 
 const TICK_MS = 60_000;
 
 // Max backoff: 24 h
 const MAX_BACKOFF_MINUTES = 24 * 60;
 
-export function startScheduler(): void {
+// Max policies syncing at the same time
+const MAX_CONCURRENT_POLICIES = 3;
+
+// A policy stuck in 'running' longer than this is treated as dead and may be re-claimed
+const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
+
+const activeRuns = new Set<Promise<void>>();
+let intervalHandle: NodeJS.Timeout | null = null;
+
+export function startScheduler(): { stop: () => Promise<void> } {
   console.log('[scheduler] started — tick every 60 s');
-  setInterval(tick, TICK_MS);
+
+  // Recover from a previous crash: anything still 'running' was interrupted
+  recoverInterruptedRuns().catch((err) => {
+    console.error('[scheduler] failed to recover interrupted runs:', err);
+  });
+
+  intervalHandle = setInterval(tick, TICK_MS);
+
+  return {
+    async stop() {
+      if (intervalHandle) clearInterval(intervalHandle);
+      intervalHandle = null;
+      if (activeRuns.size > 0) {
+        console.log(`[scheduler] waiting for ${activeRuns.size} active run(s) to finish…`);
+        await Promise.allSettled([...activeRuns]);
+      }
+    },
+  };
+}
+
+async function recoverInterruptedRuns(): Promise<void> {
+  const policies = await db('auto_update_policies')
+    .where({ last_status: 'running' })
+    .update({ last_status: 'error', last_error: 'interrupted by restart' });
+
+  const runs = await db('auto_update_runs')
+    .where({ status: 'running' })
+    .update({ status: 'error', error: 'interrupted by restart', finished_at: new Date() });
+
+  if (policies || runs) {
+    console.warn(`[scheduler] recovered ${policies} policy(ies) and ${runs} run(s) interrupted by previous shutdown`);
+  }
 }
 
 async function tick(): Promise<void> {
@@ -31,11 +73,21 @@ async function tick(): Promise<void> {
       .where('next_run_at', '<=', now)
       .select('*');
 
-    for (const policy of due) {
-      runPolicy(policy).catch((err: unknown) => {
-        console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
-      });
-    }
+    // Simple pool: at most MAX_CONCURRENT_POLICIES policies in flight at once
+    const queue = [...due];
+    const workers = Array.from({ length: Math.min(MAX_CONCURRENT_POLICIES, queue.length) }, async () => {
+      let policy;
+      while ((policy = queue.shift())) {
+        try {
+          await runPolicy(policy);
+        } catch (err) {
+          console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
+        }
+      }
+    });
+    const batch = Promise.allSettled(workers).then(() => undefined);
+    activeRuns.add(batch);
+    batch.finally(() => activeRuns.delete(batch));
   } catch (err) {
     console.error('[scheduler] tick error:', err);
   }
@@ -44,9 +96,21 @@ async function tick(): Promise<void> {
 async function runPolicy(policy: Record<string, unknown>): Promise<void> {
   const startedAt = new Date();
 
-  await db('auto_update_policies').where({ id: policy.id }).update({
-    last_status: 'running',
-  });
+  // Atomic claim: skip if another tick is already running this policy,
+  // unless that run looks dead (stuck in 'running' past the stale threshold).
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MS);
+  const claimed = await db('auto_update_policies')
+    .where({ id: policy.id })
+    .where((q) =>
+      q.whereNot('last_status', 'running')
+        .orWhereNull('last_status')
+        .orWhere('last_run_at', '<', staleBefore)
+        .orWhereNull('last_run_at'),
+    )
+    // Stamp last_run_at at claim time so the stale check above measures THIS run's age
+    .update({ last_status: 'running', last_run_at: startedAt });
+
+  if (!claimed) return;
 
   // Insert a run record immediately so it appears in the audit log
   const [run] = await db('auto_update_runs')
@@ -56,9 +120,15 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
   try {
     const connections = await getTargetConnections(policy);
 
+    let totalInstances = 0;
+    let totalDnsRecords = 0;
+    let totalCostRows = 0;
+
+    const preferredCurrency = await getPreferredCurrency();
+
     for (const conn of connections) {
-      if (policy.sync_instances) await syncInstances(conn);
-      if (policy.sync_dns) await syncDns(conn);
+      if (policy.sync_instances) totalInstances += await syncInstances(conn, preferredCurrency);
+      if (policy.sync_dns) totalDnsRecords += await syncDns(conn);
     }
 
     if (policy.sync_cost) {
@@ -69,8 +139,8 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
         console.warn(`[scheduler] policy "${policy.name}" billing errors:`, errors.map((r) => `${r.connection_name}: ${r.message}`).join(', '));
       } else {
         const ok = billingResults.filter((r) => r.status === 'ok');
-        const totalRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
-        console.log(`[scheduler] policy "${policy.name}" billing: ${totalRows} rows upserted for ${period}`);
+        totalCostRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
+        console.log(`[scheduler] policy "${policy.name}" billing: ${totalCostRows} rows upserted for ${period}`);
       }
     }
 
@@ -86,10 +156,13 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
     await db('auto_update_runs').where({ id: run.id }).update({
       status: 'success',
       connections_synced: connections.length,
+      instances_synced: totalInstances,
+      dns_records_synced: totalDnsRecords,
+      cost_rows_upserted: totalCostRows,
       finished_at: now,
     });
 
-    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections)`);
+    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections, ${totalInstances} instances, ${totalDnsRecords} DNS records, ${totalCostRows} cost rows)`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const failures = (policy.failure_count as number) + 1;
@@ -121,6 +194,11 @@ function nextRunAt(intervalMinutes: number, extraMs = 0): Date {
   return new Date(Date.now() + intervalMinutes * 60_000 + extraMs);
 }
 
+async function getPreferredCurrency(): Promise<string> {
+  const row = await db('app_settings').where({ key: 'preferred_currency' }).first().catch(() => null);
+  return row?.value ?? 'USD';
+}
+
 async function getTargetConnections(policy: Record<string, unknown>): Promise<Record<string, unknown>[]> {
   const q = db('cloud_connections');
 
@@ -136,15 +214,29 @@ async function getTargetConnections(policy: Record<string, unknown>): Promise<Re
   return q.select('*');
 }
 
-async function syncInstances(conn: Record<string, unknown>): Promise<void> {
+async function syncInstances(conn: Record<string, unknown>, preferredCurrency: string): Promise<number> {
   const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
+  let count = 0;
 
   if (conn.provider === 'gcp') {
     let priceCache: Map<string, number> | undefined;
+    let sourceCurrency = 'USD';
     try {
-      if (await isCacheStale(db)) await refreshBillingCache(credentials, db);
+      if (await isCacheStale(db)) {
+        const result = await refreshBillingCache(credentials, db);
+        sourceCurrency = result.currency;
+        // Persist detected currency so we can use it when cache is fresh
+        await db('app_settings')
+          .insert({ key: 'billing_price_currency', value: sourceCurrency })
+          .onConflict('key').merge(['value']);
+      } else {
+        const row = await db('app_settings').where({ key: 'billing_price_currency' }).first().catch(() => null);
+        sourceCurrency = row?.value ?? 'USD';
+      }
       priceCache = await loadPriceCache(db);
     } catch { /* non-fatal */ }
+
+    const rate = await getRate(sourceCurrency, preferredCurrency);
 
     const savedProjects = await db('projects_or_accounts')
       .where({ connection_id: conn.id })
@@ -158,7 +250,15 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
       try {
         const instances = await listGcpInstances(project.externalId as string, credentials, priceCache);
         for (const inst of instances) {
-          await upsertInstanceRow({ ...inst, provider: 'gcp', connectionId: conn.id as string, projectId: project.id as string | null });
+          await upsertInstanceRow({
+            ...inst,
+            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+            provider: 'gcp',
+            connectionId: conn.id as string,
+            projectId: project.id as string | null,
+          });
+          count++;
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -170,7 +270,16 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
       try {
         const sqlInstances = await listCloudSqlInstances(project.externalId as string, credentials);
         for (const inst of sqlInstances) {
-          await upsertInstanceRow({ ...inst, provider: 'gcp', resourceType: 'cloudsql', connectionId: conn.id as string, projectId: project.id as string | null });
+          await upsertInstanceRow({
+            ...inst,
+            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+            provider: 'gcp',
+            resourceType: 'cloudsql',
+            connectionId: conn.id as string,
+            projectId: project.id as string | null,
+          });
+          count++;
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -178,14 +287,44 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
       }
     }
   } else if (conn.provider === 'hetzner') {
+    const rate = await getRate('EUR', preferredCurrency);
     const servers = await listHetznerServers(credentials.token as string);
     for (const inst of servers) {
-      await upsertInstanceRow({ ...inst, provider: 'hetzner', connectionId: conn.id as string, projectId: null });
+      await upsertInstanceRow({
+        ...inst,
+        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+        provider: 'hetzner',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
+      count++;
     }
   } else if (conn.provider === 'aws') {
+    const rate = await getRate('USD', preferredCurrency);
     const instances = await listAwsInstances(credentials);
     for (const inst of instances) {
-      await upsertInstanceRow({ ...inst, provider: 'aws', connectionId: conn.id as string, projectId: null });
+      await upsertInstanceRow({
+        ...inst,
+        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
+        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
+        provider: 'aws',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
+      count++;
+    }
+  } else if (conn.provider === 'coolify') {
+    const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
+    for (const inst of apps) {
+      await upsertInstanceRow({
+        ...inst,
+        provider: 'coolify',
+        resourceType: 'app',
+        connectionId: conn.id as string,
+        projectId: null,
+      });
+      count++;
     }
   }
 
@@ -194,6 +333,8 @@ async function syncInstances(conn: Record<string, unknown>): Promise<void> {
     last_sync_at: new Date(),
     last_error: null,
   });
+
+  return count;
 }
 
 async function upsertInstanceRow(inst: {
@@ -233,9 +374,10 @@ async function upsertInstanceRow(inst: {
     ]);
 }
 
-async function syncDns(conn: Record<string, unknown>): Promise<void> {
+async function syncDns(conn: Record<string, unknown>): Promise<number> {
   // Find dns_connections belonging to same user
   const dnsConns = await db('dns_connections').where({ user_id: conn.user_id }).select('*');
+  let count = 0;
 
   for (const dnsConn of dnsConns) {
     try {
@@ -261,6 +403,7 @@ async function syncDns(conn: Record<string, unknown>): Promise<void> {
               })
               .onConflict(['dns_connection_id', 'record_id'])
               .merge(['name', 'type', 'value', 'ttl', 'proxied', 'last_seen_at', 'updated_at']);
+            count++;
           }
         }
         await db('dns_connections').where({ id: dnsConn.id }).update({
@@ -277,4 +420,6 @@ async function syncDns(conn: Record<string, unknown>): Promise<void> {
       });
     }
   }
+
+  return count;
 }

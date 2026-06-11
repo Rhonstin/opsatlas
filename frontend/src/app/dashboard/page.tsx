@@ -1,7 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Instance, Connection, CostSummary, CostByProject, BillingActual } from '@/lib/api';
+import { getUser } from '@/lib/auth';
 import styles from './page.module.css';
 
 function fmtUsd(n: number): string {
@@ -21,17 +23,26 @@ function currentPeriod(): string {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [billingActuals, setBillingActuals] = useState<BillingActual[]>([]);
 
+  const isViewer = getUser()?.role === 'viewer';
+
+  useEffect(() => {
+    if (isViewer) { router.replace('/dashboard/instances'); return; }
+  }, [isViewer, router]);
+
   useEffect(() => {
     api.getInstances().then(setInstances).catch(() => {});
-    api.getConnections().then(setConnections).catch(() => {});
-    api.getCostSummary().then(setCostSummary).catch(() => {});
-    api.getBillingActuals(currentPeriod()).then(setBillingActuals).catch(() => {});
-  }, []);
+    if (!isViewer) {
+      api.getConnections().then(setConnections).catch(() => {});
+      api.getCostSummary().then(setCostSummary).catch(() => {});
+      api.getBillingActuals(currentPeriod()).then(setBillingActuals).catch(() => {});
+    }
+  }, [isViewer]);
 
   // ── Estimated costs ──────────────────────────────────────────────────────
   const now = Date.now();
@@ -117,43 +128,48 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="card">
-          <div className={styles.cardTitle}>Connections</div>
-          <div className={styles.cardValue}>
-            <Link href="/dashboard/connections">{connections.length}</Link>
+        {!isViewer && (
+          <div className="card">
+            <div className={styles.cardTitle}>Connections</div>
+            <div className={styles.cardValue}>
+              <Link href="/dashboard/connections">{connections.length}</Link>
+            </div>
+            <div className={styles.cardNote}>
+              {connections.filter((c) => c.status === 'active').length} active
+            </div>
           </div>
-          <div className={styles.cardNote}>
-            {connections.filter((c) => c.status === 'active').length} active
-          </div>
-        </div>
+        )}
 
-        {/* Actual spend card — shows real billing when available, else estimate */}
-        <div className="card">
-          <div className={styles.cardTitle}>
-            {hasActuals ? 'Actual Spend' : 'Est. Spend'}
-            <span className={styles.periodBadge}>{currentPeriod()}</span>
+        {!isViewer && (
+          <div className="card">
+            <div className={styles.cardTitle}>
+              {hasActuals ? 'Actual Spend' : 'Est. Spend'}
+              <span className={styles.periodBadge}>{currentPeriod()}</span>
+            </div>
+            <div className={styles.cardValue}>
+              {hasActuals ? fmtUsd(actualTotal) : (instances.length ? fmtUsd(instances.reduce((s, i) => s + costToDate(i), 0)) : '—')}
+            </div>
+            <div className={styles.cardNote}>
+              {hasActuals
+                ? `${fmtUsd(estMonthly)}/mo est. · ${actualTotal > 0 ? ((actualTotal / estMonthly) * 100).toFixed(0) : '—'}% of est.`
+                : `${fmtMonthly(estMonthly)} projected`}
+            </div>
           </div>
-          <div className={styles.cardValue}>
-            {hasActuals ? fmtUsd(actualTotal) : (instances.length ? fmtUsd(instances.reduce((s, i) => s + costToDate(i), 0)) : '—')}
-          </div>
-          <div className={styles.cardNote}>
-            {hasActuals
-              ? `${fmtUsd(estMonthly)}/mo est. · ${actualTotal > 0 ? ((actualTotal / estMonthly) * 100).toFixed(0) : '—'}% of est.`
-              : `${fmtMonthly(estMonthly)} projected`}
-          </div>
-        </div>
+        )}
 
-        <div className="card">
-          <div className={styles.cardTitle}>Est. Monthly Cost</div>
-          <div className={styles.cardValue}>
-            {instances.length ? fmtMonthly(estMonthly) : '—'}
+        {!isViewer && (
+          <div className="card">
+            <div className={styles.cardTitle}>Est. Monthly Cost</div>
+            <div className={styles.cardValue}>
+              {instances.length ? fmtMonthly(estMonthly) : '—'}
+            </div>
+            <div className={styles.cardNote}>Full month at current rate</div>
           </div>
-          <div className={styles.cardNote}>Full month at current rate</div>
-        </div>
+        )}
       </div>
 
-      {/* ── Row 2: health signals ── */}
-      {(longRunning > 0 || idleCandidates > 0 || domainsMapped > 0) && (
+      {/* ── Row 2: health signals (admin only for cost-related) ── */}
+      {!isViewer && (longRunning > 0 || idleCandidates > 0 || domainsMapped > 0) && (
         <div className={styles.cards} style={{ marginTop: 16 }}>
           {longRunning > 0 && (
             <div className="card">
@@ -185,8 +201,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Provider cost breakdown ── */}
-      {activeProviders.length > 0 && (
+      {/* ── Provider cost breakdown (admin only) ── */}
+      {!isViewer && activeProviders.length > 0 && (
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Cost by provider</h2>
           <div className={styles.breakdown}>
@@ -217,7 +233,6 @@ export default function DashboardPage() {
                 </Link>
               );
             })}
-            {/* Total row — actual only counts providers with real data */}
             {(() => {
               const providersWithActuals = activeProviders.filter((p) => providerStats[p].actualMonthly > 0);
               const partialActual = providersWithActuals.length > 0 && providersWithActuals.length < activeProviders.length;
@@ -244,8 +259,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Cost by project ── */}
-      {costSummary && costSummary.by_project.length > 0 && (
+      {/* ── Cost by project (admin only) ── */}
+      {!isViewer && costSummary && costSummary.by_project.length > 0 && (
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Cost by project</h2>
           <div className={styles.breakdown}>
@@ -276,8 +291,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Top expensive instances ── */}
-      {costSummary && costSummary.top_expensive.length > 0 && (
+      {/* ── Top expensive instances (admin only) ── */}
+      {!isViewer && costSummary && costSummary.top_expensive.length > 0 && (
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Top expensive instances</h2>
           <div className={styles.breakdown}>
