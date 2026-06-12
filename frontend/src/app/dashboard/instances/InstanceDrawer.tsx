@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, InstanceDetail } from '@/lib/api';
+import { calcCostToDate, fmtUptime, isLongRunning as isLongRunningInst } from '@/lib/cost';
 import styles from './instances.module.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -29,31 +30,12 @@ function fmtMonthly(n: string | null, provider = ''): string {
   return `${currencySymbol(provider)}${parseFloat(n).toFixed(2)}/mo`;
 }
 
-function fmtUptime(hours: number | null): string {
-  if (hours === null) return '—';
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-}
-
 function fmtDate(d: string | null): string {
   if (!d) return '—';
   return new Date(d).toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-}
-
-function calcCostToDate(inst: InstanceDetail): number {
-  if (inst.status !== 'RUNNING' || !inst.estimated_hourly_cost) return 0;
-  const hourly = parseFloat(inst.estimated_hourly_cost);
-  const now = Date.now();
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-  const instanceStart = inst.launched_at
-    ? Math.max(new Date(inst.launched_at).getTime(), startOfMonth.getTime())
-    : startOfMonth.getTime();
-  return hourly * ((now - instanceStart) / 3_600_000);
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
@@ -83,10 +65,7 @@ export default function InstanceDrawer({
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load'));
   }, [instanceId]);
 
-  const isLongRunning =
-    inst?.status === 'RUNNING' &&
-    inst.uptime_hours !== null &&
-    inst.uptime_hours > 30 * 24;
+  const isLongRunning = inst != null && isLongRunningInst(inst);
 
   return (
     <>

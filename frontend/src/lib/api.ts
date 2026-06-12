@@ -20,6 +20,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      // Also drop the middleware session cookie, or /login would bounce back to /dashboard
+      document.cookie = 'opsatlas_session=; Path=/; Max-Age=0; SameSite=Lax';
       window.location.replace('/login');
     }
     throw new Error('Session expired');
