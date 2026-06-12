@@ -203,6 +203,12 @@ export const api = {
     return request<(Instance & { domains: string[] | null })[]>(`/instances${qs}`);
   },
 
+  exportInstances: (params?: { provider?: string; status?: string; resource_type?: string }) => {
+    const entries = Object.entries(params ?? {}).filter(([, v]) => v);
+    const qs = entries.length ? '?' + new URLSearchParams(Object.fromEntries(entries)).toString() : '';
+    return request<{ exported_at: string; count: number; instances: unknown[] }>(`/instances/export${qs}`);
+  },
+
   // Auto-update policies
   getAutoUpdatePolicies: () => request<AutoUpdatePolicy[]>('/auto-update-policies'),
 

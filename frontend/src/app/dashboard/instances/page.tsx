@@ -90,6 +90,29 @@ function InstancesPageInner() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>(initialView);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const data = await api.exportInstances({
+        ...(view !== 'all' ? { provider: view } : {}),
+        ...(filterStatus ? { status: filterStatus } : {}),
+        ...(filterResourceType ? { resource_type: filterResourceType } : {}),
+      });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `opsatlas-instances-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const filtered: InstanceWithDns[] = instances.filter((inst) => {
     if (view !== 'all' && inst.provider !== view) return false;
@@ -192,6 +215,9 @@ function InstancesPageInner() {
             <option value="STOPPED">Stopped</option>
             <option value="TERMINATED">Terminated</option>
           </select>
+          <button className="btn-ghost" onClick={handleExport} disabled={exporting || instances.length === 0}>
+            {exporting ? 'Exporting…' : 'Export JSON'}
+          </button>
         </div>
       </div>
 
