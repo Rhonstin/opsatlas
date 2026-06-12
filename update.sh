@@ -79,6 +79,20 @@ FRONTEND_URL="$FRONTEND_URL" \
 echo "==> Restarting containers …"
 docker compose "${COMPOSE_FILES[@]}" up -d
 
+# ── Backup database before migrating ─────────────────────────────────────────
+
+BACKUP_DIR="${BACKUP_DIR:-backups}"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/opsatlas-$(date +%F-%H%M%S).sql"
+echo "==> Backing up database to $BACKUP_FILE …"
+if docker compose "${COMPOSE_FILES[@]}" exec -T postgres pg_dump -U postgres opsatlas > "$BACKUP_FILE"; then
+  # Keep the 7 most recent backups
+  ls -1t "$BACKUP_DIR"/opsatlas-*.sql 2>/dev/null | tail -n +8 | xargs -r rm --
+else
+  rm -f "$BACKUP_FILE"
+  echo "WARNING: backup failed — continuing without one." >&2
+fi
+
 # ── Run migrations ────────────────────────────────────────────────────────────
 
 echo "==> Running database migrations …"
