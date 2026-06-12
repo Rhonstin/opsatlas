@@ -44,6 +44,9 @@ coverage/
 # Local compose overrides (machine-specific)
 compose.install.yml
 
+# Database backups created by update.sh
+backups/
+
 # Misc
 .vercel
 .turbo

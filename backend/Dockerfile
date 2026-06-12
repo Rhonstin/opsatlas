@@ -20,6 +20,9 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# node:20-alpine ships a non-root 'node' user — same posture as the frontend image
+USER node
+
 EXPOSE 4000
 
 CMD ["node", "dist/index.js"]

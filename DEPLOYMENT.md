@@ -376,6 +376,45 @@ docker compose up -d
 docker compose exec backend npm run migrate   # run after every deploy
 ```
 
+### Admin CLI
+
+User management from the terminal — no web UI needed:
+
+```bash
+docker compose exec backend node dist/cli.js list-users
+docker compose exec backend node dist/cli.js create-admin admin@example.com
+docker compose exec backend node dist/cli.js create-viewer viewer@example.com
+docker compose exec backend node dist/cli.js reset-password admin@example.com
+docker compose exec backend node dist/cli.js set-role user@example.com admin
+docker compose exec backend node dist/cli.js disable-mfa admin@example.com   # lost authenticator
+```
+
+Passwords are prompted interactively (hidden input); add `--password <pw>` for scripting.
+Local development: `cd backend && npm run cli -- <command>`.
+
+### Backup & restore
+
+```bash
+# Backup (run on a schedule — cron, systemd timer, etc.)
+docker compose exec -T postgres pg_dump -U postgres opsatlas > opsatlas-$(date +%F).sql
+
+# Restore into a fresh database
+cat opsatlas-2026-06-12.sql | docker compose exec -T postgres psql -U postgres opsatlas
+```
+
+> ⚠️ `docker compose down -v` deletes the `postgres_data` volume and ALL data.
+> Plain `docker compose down` (without `-v`) is safe.
+
+### Migration rollback
+
+If a deploy's migration breaks something:
+
+```bash
+docker compose exec backend npx knex migrate:rollback --knexfile dist/db/knexfile.js
+```
+
+Then roll the images back to the previous version (`git checkout <prev-tag> && docker compose build && docker compose up -d`). Always take a backup before updating.
+
 ---
 
 ## 10. Post-deploy checklist

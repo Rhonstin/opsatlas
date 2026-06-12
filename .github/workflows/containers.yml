@@ -24,8 +24,35 @@ permissions:
   packages: write
 
 jobs:
+  typecheck:
+    name: Typecheck ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ matrix.dir }}
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: ${{ matrix.dir }}
+
   build:
     name: Build ${{ matrix.image }}
+    needs: typecheck
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
