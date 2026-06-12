@@ -20,6 +20,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts, try again later' },
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 /** GET /auth/config — public endpoint, returns server feature flags */

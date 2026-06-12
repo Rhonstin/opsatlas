@@ -14,6 +14,7 @@ import { listCloudSqlInstances } from './gcp/cloudsql';
 import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
 import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
 import { getRate, convert } from './lib/exchange-rates';
+import { upsertInstanceRow } from './lib/instances';
 
 const TICK_MS = 60_000;
 
@@ -335,43 +336,6 @@ async function syncInstances(conn: Record<string, unknown>, preferredCurrency: s
   });
 
   return count;
-}
-
-async function upsertInstanceRow(inst: {
-  provider: string; resourceType?: string; connectionId: string; projectId: string | null;
-  instanceId: string; name: string; status: string; region: string; zone: string;
-  privateIp: string | null; publicIp: string | null; machineType: string;
-  launchedAt: Date | null; estimatedHourlyCost: number; estimatedMonthlyCost: number;
-  rawPayload: Record<string, unknown>;
-}) {
-  await db('instances')
-    .insert({
-      provider: inst.provider,
-      resource_type: inst.resourceType ?? 'compute',
-      connection_id: inst.connectionId,
-      project_or_account_id: inst.projectId,
-      instance_id: inst.instanceId,
-      name: inst.name,
-      status: inst.status,
-      region: inst.region,
-      zone: inst.zone,
-      private_ip: inst.privateIp,
-      public_ip: inst.publicIp,
-      instance_type: inst.machineType,
-      launched_at: inst.launchedAt,
-      last_seen_at: new Date(),
-      estimated_hourly_cost: inst.estimatedHourlyCost,
-      estimated_monthly_cost: inst.estimatedMonthlyCost,
-      raw_payload: JSON.stringify(inst.rawPayload),
-    })
-    .onConflict(['connection_id', 'instance_id'])
-    .merge([
-      'name', 'status', 'region', 'zone',
-      'private_ip', 'public_ip', 'instance_type',
-      'launched_at', 'last_seen_at',
-      'estimated_hourly_cost', 'estimated_monthly_cost',
-      'project_or_account_id', 'resource_type', 'raw_payload', 'updated_at',
-    ]);
 }
 
 async function syncDns(conn: Record<string, unknown>): Promise<number> {

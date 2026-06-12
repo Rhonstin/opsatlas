@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "cli": "ts-node --transpile-only src/cli.ts",
+    "test": "vitest run",
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "knex migrate:latest --knexfile src/db/knexfile.ts",
@@ -38,8 +39,11 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.9",
     "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.8"
   }
 }
