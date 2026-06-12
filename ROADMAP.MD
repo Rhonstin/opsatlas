@@ -311,22 +311,22 @@ Real billing data from cloud provider APIs.
 - [x] Billing nav link enabled
 - [ ] Scheduled billing refresh via auto-update policy
 
-### Milestone 15A — Coolify Integration
+### Milestone 15A — Coolify Integration ✅ *(known gaps in M17)*
 Connect to self-hosted Coolify instances to surface deployed applications, projects, and domain names alongside cloud infrastructure.
 
 **Goal:** unified view of Coolify apps and services with their live domains, status, and resource links.
 
 #### Work items
-- [ ] `provider: 'coolify'` support on `cloud_connections`
-- [ ] Coolify API token auth + connection test (GET `/api/v1/health`)
-- [ ] Fetch projects from Coolify API → upsert into `projects_or_accounts`
-- [ ] Fetch applications and services per project → upsert into `instances` with `resource_type: 'app'`
-- [ ] Sync domain names from Coolify app config → store in `dns_records` or new `app_domains` table
-- [ ] Link Coolify domains to existing DNS records (cross-reference with Cloudflare sync)
-- [ ] Coolify projects shown in connections project list
-- [ ] Applications appear in unified instances table (name, project, status, domains, URLs)
-- [ ] Instance detail drawer: show Coolify resource type, linked services, repo URL, deploy URL
-- [ ] Scheduled sync via existing auto-update policies
+- [x] `provider: 'coolify'` support on `cloud_connections`
+- [x] Coolify API token auth + connection test
+- [x] Fetch applications and services → upsert into `instances` with `resource_type: 'app'`
+- [x] Domain names from app `fqdn` stored in `raw_payload.fqdn_list`, shown in instances table
+- [x] Applications appear in unified instances table (name, project, status, domains)
+- [x] Instance detail drawer: resource type, repo URL, app URLs
+- [x] Scheduled sync via existing auto-update policies
+- [ ] Service status from API (currently hardcoded `RUNNING` — see M17)
+- [ ] Cost display as "n/a" instead of $0 (see M17)
+- [ ] Phase 2: linked resources (databases, Redis, etc.) as child instances
 
 #### Implementation notes
 - Coolify v4 REST API: `GET /api/v1/applications`, `GET /api/v1/projects`, `GET /api/v1/services`
@@ -349,13 +349,66 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - [x] Fix long-running / idle candidate quick links (tabs were removed from instances page)
 - [x] Provider instance count breakdown (GCP N · AWS N · Hetzner N)
 
+### Milestone 16 — Security & Reliability Hardening ✅ *(June 2026)*
+Outcome of the full-system audit: RBAC enforcement, crypto hardening, scheduler robustness, infra hygiene.
+
+#### Work items
+- [x] RBAC enforced server-side: `requireAdmin` on all mutation routes (sync, dns-sync, auto-update CRUD/trigger, config import/**export**, auth/sso config)
+- [x] Default JWT role is `viewer` when role claim is missing (was `admin`)
+- [x] Ownership checks: `user_id` in UPDATE clauses, auto-update `target_id` must reference caller's own connection
+- [x] `ENCRYPTION_KEY` validated at startup (min 32 chars, fail-fast; was zero-padded)
+- [x] Rate limiting on login / register / MFA confirm (10 per 15 min per IP)
+- [x] Timeouts on every external HTTP call (`fetchWithTimeout`, 10–30 s)
+- [x] Scheduler: atomic policy claim (no duplicate concurrent runs), max 3 policies in flight, interrupted-run recovery on startup
+- [x] Graceful shutdown (SIGTERM/SIGINT: drain runs, close pool, 30 s cap)
+- [x] Exchange rates fail-closed: persisted last-good rate, error instead of silent 1:1
+- [x] `/health` checks DB connectivity; knex pool bounds
+- [x] Docker: `restart: unless-stopped`, healthchecks, non-root backend, `.dockerignore`
+- [x] `update.sh` auto-backup (`pg_dump`, keep 7) before migrations
+- [x] Admin CLI (`node dist/cli.js`): list-users, create-admin/viewer, reset-password, set-role, disable-mfa
+- [x] CI gates: typecheck (backend + frontend) + backend integration tests before image build
+- [x] Auth/RBAC integration test suite (22 tests, vitest + supertest, role × endpoint matrix)
+- [x] Frontend: settings page split into per-tab files, shared `lib/cost.ts` + `usePollUntil`, Next.js middleware route gating, dashboard error surfacing
+- [x] Instances JSON export (`GET /instances/export` + UI button; viewers get no cost fields)
+- [ ] httpOnly-cookie sessions (replace localStorage token — larger auth-flow change)
+- [ ] Structured logging (pino) with request IDs
+- [ ] Retry/backoff framework for provider API calls
+
+### Milestone 17 — Data Collection Correctness *(proposed — audit 2026-06-13)*
+Fix systemic data-quality issues found in the cloud data-collection audit. Full details: `wiki/opsatlas-data-collection-audit-2026-06-13.md`.
+
+#### Stage A — correctness of existing data (critical)
+- [ ] **Unify currency conversion**: manual sync (`routes/sync.ts`) stores raw provider currency (Hetzner EUR shown as preferred currency!) while scheduler converts — move conversion into the shared upsert layer so both paths agree
+- [ ] **Fix `billing_actuals.amount_usd` semantics**: column stores the *converted* amount — migrate to `amount` + `source_currency` (+ convert on read), or the column name lies and history breaks on currency change
+- [ ] **DNS sync once per policy run**: scheduler currently re-syncs ALL user DNS connections once per cloud connection (N× duplicate Cloudflare calls + upsert races)
+- [ ] **Stale resource cleanup**: instances and dns_records deleted in the cloud linger forever (upsert-only); after a successful sync, delete or flag rows with `last_seen_at` older than the run start
+- [ ] **Cloudflare pagination**: zones (`per_page=100`) and records (`per_page=1000`) have no pagination loop — silent truncation; honor `result_info`
+- [ ] **Cloud SQL pagination**: handle `nextPageToken` (currently `maxResults=500` hard cap)
+
+#### Stage B — completeness
+- [ ] Coolify: real service status from API (hardcoded `RUNNING`); show costs as "n/a" not $0
+- [ ] DNS: sync all record types (TXT/MX/SRV) or make types configurable per connection
+- [ ] GCP: regional disk pricing from SKU catalog (hardcoded us-central1 rates); extract `preemptible` flag from raw_payload
+- [ ] AWS: `session_token` support in Cost Explorer (temporary credentials); skip `terminated` instances
+- [ ] Hetzner billing: include IPv6 primary IPs; warn on price-location fallback
+- [ ] billing-refresh: per-connection transactional upsert + "N/M connections ok" reporting
+
+#### Stage C — coverage extensions
+- [ ] AWS: RDS, EBS volumes, Elastic IPs
+- [ ] GCP: GKE nodes, unattached disks, load balancers, static IPs; network egress in estimates; sustained-use/CUD discount modeling
+- [ ] Index `billing_actuals` for `(user_id, period)` query pattern
+- [ ] exchange-rates: separate `lastAttemptAt` from `fetchedAt` (true rate age currently lost on fallback)
+
 ---
 
 ## 4. API Reference
 
 ### Auth
-- `POST /auth/register`
-- `POST /auth/login`
+- `POST /auth/register`, `POST /auth/login` (rate-limited)
+- `POST /auth/mfa/confirm`, `GET /auth/mfa/setup`, `POST /auth/mfa/verify-setup`, `POST /auth/mfa/disable`, `GET /auth/mfa/status`
+- `POST /auth/google/callback`, `POST /auth/authentik/callback`, `GET /auth/providers`
+- `GET|PUT /auth/config`, `GET|PUT /auth/sso-config` *(PUT admin-only)*, `GET|PUT /auth/google-config` *(admin)*
+- `GET /auth/me`
 
 ### Connections
 - `GET /connections`
@@ -373,6 +426,7 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - `GET /instances` (supports `?provider=`, `?status=`, `?connection_id=`, `?resource_type=`, `?with_dns=`, `?favorite=`, `?tags=`)
 - `GET /instances/:id` — includes `project_name`, `database_version` (Cloud SQL), `cpu_count`, `ram_gb`, `disks`, `domains`
 - `GET /instances/cost-summary` — aggregated cost by project, top expensive, long-running, idle
+- `GET /instances/export` — JSON file download (filters: `?provider=`, `?status=`, `?resource_type=`; viewers get no cost fields)
 
 ### Favorites *(Milestone 10A)*
 - `GET /favorites`
@@ -435,8 +489,8 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - [x] GCP (multiple projects per connection)
 - [x] GCP Cloud SQL (synced alongside Compute Engine)
 - [x] Hetzner (API token, all servers)
-- [ ] AWS (1 account)
-- [ ] Coolify (self-hosted, API token, projects + apps + domains)
+- [x] AWS (1 account, EC2 only — RDS/EBS in M17 Stage C)
+- [x] Coolify (self-hosted, API token, apps + services + domains)
 
 ### Core Features
 - [x] Instances list with uptime + cost
@@ -451,7 +505,7 @@ Consolidate cost visibility and surface real billing data on the main dashboard.
 - [ ] Tags
 
 ### Out of MVP Scope
-- RBAC / multi-user / teams
+- ~~RBAC / multi-user~~ → **implemented** (admin/viewer roles, server-side enforcement, SSO via Google/Authentik, MFA) — teams still out of scope
 - Alerts / notifications / Slack
 - Instance control (start / stop)
 - Port scanning
