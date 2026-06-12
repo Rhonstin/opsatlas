@@ -108,6 +108,82 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * GET /instances/export
+ * Download all instances as a JSON file. Same visibility rules as GET /instances;
+ * viewers get no cost fields. Supports ?provider=, ?status=, ?resource_type=.
+ * Must be declared before /:id to avoid routing conflict.
+ */
+router.get('/export', async (req: AuthRequest, res: Response) => {
+  const { provider, status, resource_type } = req.query;
+  const scopeIds = await getScopeUserIds(req);
+  const isViewer = req.userRole === 'viewer';
+
+  let query = db('instances')
+    .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
+    .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
+    .whereIn('cloud_connections.user_id', scopeIds)
+    .select(
+      'instances.provider',
+      'instances.resource_type',
+      'cloud_connections.name as connection_name',
+      'instances.instance_id',
+      'instances.name',
+      'instances.status',
+      'instances.region',
+      'instances.zone',
+      'instances.private_ip',
+      'instances.public_ip',
+      'instances.instance_type',
+      'instances.launched_at',
+      'instances.last_seen_at',
+      'instances.estimated_hourly_cost',
+      'instances.estimated_monthly_cost',
+      'projects_or_accounts.name as project_name',
+      'projects_or_accounts.external_id as project_external_id',
+    )
+    .orderBy(['instances.provider', 'instances.name']);
+
+  if (provider) query = query.where('instances.provider', provider as string);
+  if (status) query = query.where('instances.status', status as string);
+  if (resource_type) query = query.where('instances.resource_type', resource_type as string);
+
+  const rows = await query;
+
+  // Map public IPs to domain names, same as the list view
+  const dnsRows = await db('dns_records')
+    .join('dns_connections', 'dns_records.dns_connection_id', 'dns_connections.id')
+    .whereIn('dns_connections.user_id', scopeIds)
+    .whereIn('dns_records.type', ['A', 'AAAA'])
+    .select('dns_records.value as ip', 'dns_records.name as domain');
+  const ipToDomains = new Map<string, string[]>();
+  for (const r of dnsRows) {
+    if (!ipToDomains.has(r.ip)) ipToDomains.set(r.ip, []);
+    ipToDomains.get(r.ip)!.push(r.domain);
+  }
+
+  const now = Date.now();
+  const instances = rows.map((r) => {
+    const { estimated_hourly_cost, estimated_monthly_cost, ...rest } = r;
+    return {
+      ...rest,
+      uptime_hours: r.launched_at
+        ? Math.floor((now - new Date(r.launched_at).getTime()) / 3_600_000)
+        : null,
+      domains: r.public_ip ? (ipToDomains.get(r.public_ip) ?? null) : null,
+      ...(isViewer ? {} : { estimated_hourly_cost, estimated_monthly_cost }),
+    };
+  });
+
+  const filename = `opsatlas-instances-${new Date().toISOString().slice(0, 10)}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.json({
+    exported_at: new Date().toISOString(),
+    count: instances.length,
+    instances,
+  });
+});
+
+/**
  * GET /instances/cost-summary
  * Aggregated cost data: by connection, top expensive, long-running, idle candidates.
  * Must be declared before /:id to avoid routing conflict.
