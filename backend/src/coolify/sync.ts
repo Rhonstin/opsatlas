@@ -16,8 +16,9 @@ export interface CoolifyInstance {
   privateIp: string | null;
   publicIp: string | null;
   launchedAt: Date | null;
-  estimatedHourlyCost: number;
-  estimatedMonthlyCost: number;
+  // null = cost unknown for self-hosted Coolify (shown as "—", not "$0")
+  estimatedHourlyCost: number | null;
+  estimatedMonthlyCost: number | null;
   rawPayload: Record<string, unknown>;
 }
 
@@ -39,6 +40,7 @@ interface CoolifyService {
   id: number;
   uuid: string;
   name: string;
+  status?: string | null;
   fqdn?: string | null;
   project?: { uuid?: string; name?: string } | null;
   created_at: string;
@@ -117,8 +119,8 @@ export async function listCoolifyApps(
       privateIp: null,
       publicIp: null,
       launchedAt: app.created_at ? new Date(app.created_at) : null,
-      estimatedHourlyCost: 0,
-      estimatedMonthlyCost: 0,
+      estimatedHourlyCost: null,
+      estimatedMonthlyCost: null,
       rawPayload: {
         id: app.id,
         uuid: app.uuid,
@@ -137,15 +139,15 @@ export async function listCoolifyApps(
     instances.push({
       instanceId: svc.uuid,
       name: svc.name,
-      status: 'RUNNING',
+      status: normalizeStatus(svc.status),
       region: hostname,
       zone: projectName,
       machineType: 'service',
       privateIp: null,
       publicIp: null,
       launchedAt: svc.created_at ? new Date(svc.created_at) : null,
-      estimatedHourlyCost: 0,
-      estimatedMonthlyCost: 0,
+      estimatedHourlyCost: null,
+      estimatedMonthlyCost: null,
       rawPayload: {
         id: svc.id,
         uuid: svc.uuid,

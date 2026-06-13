@@ -1,14 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
-import { decrypt } from '../lib/crypto';
-import { listGcpInstances } from '../gcp/sync';
-import { listCloudSqlInstances } from '../gcp/cloudsql';
-import { refreshBillingCache, loadPriceCache, isCacheStale } from '../gcp/billing';
-import { listHetznerServers } from '../hetzner/sync';
-import { listAwsInstances } from '../aws/ec2';
-import { listCoolifyApps } from '../coolify/sync';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
-import { upsertInstanceRow as upsertInstance } from '../lib/instances';
+import { syncConnectionInstances } from '../lib/sync-runner';
 
 const router = Router();
 
@@ -47,112 +40,16 @@ router.post('/:connection_id', requireAdmin, async (req: AuthRequest, res: Respo
 
 async function runSync(conn: Record<string, string>, runId: string) {
   try {
-    const credentials = JSON.parse(decrypt(conn.credentials_enc)) as Record<string, unknown>;
-
-    if (conn.provider === 'gcp') {
-      await syncGcp(conn, credentials);
-    } else if (conn.provider === 'hetzner') {
-      await syncHetzner(conn, credentials);
-    } else if (conn.provider === 'aws') {
-      await syncAws(conn, credentials);
-    } else if (conn.provider === 'coolify') {
-      await syncCoolify(conn, credentials);
-    }
-
+    // Shared with the scheduler: converts costs to preferred currency and
+    // prunes instances that disappeared from the provider.
+    await syncConnectionInstances(conn);
     await db('sync_runs').where({ id: runId }).update({ status: 'success', finished_at: new Date() });
-    await db('cloud_connections').where({ id: conn.id }).update({ status: 'active', last_sync_at: new Date(), last_error: null });
+    // syncConnectionInstances already set the connection status to active.
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await db('sync_runs').where({ id: runId }).update({ status: 'error', finished_at: new Date(), error_log: message });
-    await db('cloud_connections').where({ id: conn.id }).update({ status: 'error', last_error: message });
+    // connection status was set to error inside syncConnectionInstances
   }
-}
-
-async function syncGcp(conn: Record<string, string>, credentials: Record<string, unknown>) {
-  let priceCache: Map<string, number> | undefined;
-  try {
-    if (await isCacheStale(db)) await refreshBillingCache(credentials, db);
-    priceCache = await loadPriceCache(db);
-  } catch { /* Non-fatal: fall back to static rate tables */ }
-
-  const savedProjects = await db('projects_or_accounts')
-    .where({ connection_id: conn.id })
-    .select('id', 'external_id');
-
-  const projectsToSync: Array<{ id: string | null; externalId: string }> =
-    savedProjects.length
-      ? savedProjects.map((p: { id: string; external_id: string }) => ({ id: p.id, externalId: p.external_id }))
-      : [{ id: null, externalId: (credentials.project_id as string) || conn.name }];
-
-  const errors: string[] = [];
-
-  for (const project of projectsToSync) {
-    try {
-      const instances = await listGcpInstances(project.externalId, credentials, priceCache);
-      for (const inst of instances) {
-        await upsertInstance({ ...inst, provider: 'gcp', connectionId: conn.id, projectId: project.id });
-      }
-      console.log(`[sync] GCP project ${project.externalId}: ${instances.length} instances`);
-      if (project.id) {
-        await db('projects_or_accounts')
-          .where({ id: project.id })
-          .update({ last_sync_at: new Date(), last_error: null });
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[sync] GCP project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-      errors.push(`${project.externalId}: ${msg.split('\n')[0]}`);
-      if (project.id) {
-        await db('projects_or_accounts')
-          .where({ id: project.id })
-          .update({ last_error: msg.split('\n')[0] });
-      }
-    }
-  }
-
-  // Only fail if every project errored — partial success is acceptable
-  if (errors.length > 0 && errors.length === projectsToSync.length) {
-    throw new Error(`All projects failed:\n${errors.join('\n')}`);
-  }
-
-  // Cloud SQL instances (per project, non-fatal if API not enabled)
-  for (const project of projectsToSync) {
-    try {
-      const sqlInstances = await listCloudSqlInstances(project.externalId, credentials);
-      for (const inst of sqlInstances) {
-        await upsertInstance({ ...inst, provider: 'gcp', resourceType: 'cloudsql', connectionId: conn.id, projectId: project.id });
-      }
-      if (sqlInstances.length > 0) {
-        console.log(`[sync] Cloud SQL project ${project.externalId}: ${sqlInstances.length} instances`);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[sync] Cloud SQL project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-    }
-  }
-}
-
-async function syncHetzner(conn: Record<string, string>, credentials: Record<string, unknown>) {
-  const servers = await listHetznerServers(credentials.token as string);
-  for (const inst of servers) {
-    await upsertInstance({ ...inst, provider: 'hetzner', connectionId: conn.id, projectId: null });
-  }
-}
-
-async function syncAws(conn: Record<string, string>, credentials: Record<string, unknown>) {
-  const instances = await listAwsInstances(credentials);
-  for (const inst of instances) {
-    await upsertInstance({ ...inst, provider: 'aws', connectionId: conn.id, projectId: null });
-  }
-  console.log(`[sync] AWS ${conn.name}: ${instances.length} instances`);
-}
-
-async function syncCoolify(conn: Record<string, string>, credentials: Record<string, unknown>) {
-  const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
-  for (const inst of apps) {
-    await upsertInstance({ ...inst, provider: 'coolify', resourceType: 'app', connectionId: conn.id, projectId: null });
-  }
-  console.log(`[sync] Coolify ${conn.name}: ${apps.length} apps/services`);
 }
 
 /**

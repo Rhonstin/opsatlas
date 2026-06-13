@@ -109,18 +109,25 @@ export async function listCloudSqlInstances(
   const token = await client.getAccessToken();
   if (!token.token) throw new Error('Failed to get access token for Cloud SQL API');
 
-  const url = `https://sqladmin.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/instances?maxResults=500`;
-  const resp = await fetchWithTimeout(url, {
-    headers: { Authorization: `Bearer ${token.token}` },
-  });
+  const base = `https://sqladmin.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/instances?maxResults=500`;
+  const items: SqlInstanceRaw[] = [];
+  let pageToken: string | undefined;
 
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`Cloud SQL API error ${resp.status}: ${body.slice(0, 200)}`);
-  }
+  do {
+    const url = pageToken ? `${base}&pageToken=${encodeURIComponent(pageToken)}` : base;
+    const resp = await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${token.token}` },
+    });
 
-  const json = await resp.json() as { items?: SqlInstanceRaw[] };
-  const items: SqlInstanceRaw[] = json.items ?? [];
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Cloud SQL API error ${resp.status}: ${body.slice(0, 200)}`);
+    }
+
+    const json = await resp.json() as { items?: SqlInstanceRaw[]; nextPageToken?: string };
+    items.push(...(json.items ?? []));
+    pageToken = json.nextPageToken;
+  } while (pageToken);
 
   return items.map((raw) => {
     const tier = raw.settings?.tier ?? '';

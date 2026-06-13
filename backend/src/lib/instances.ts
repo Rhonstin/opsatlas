@@ -15,8 +15,9 @@ export interface UpsertableInstance {
   publicIp: string | null;
   machineType: string;
   launchedAt: Date | null;
-  estimatedHourlyCost: number;
-  estimatedMonthlyCost: number;
+  // null = cost unknown / not applicable (e.g. self-hosted Coolify), distinct from 0
+  estimatedHourlyCost: number | null;
+  estimatedMonthlyCost: number | null;
   rawPayload: Record<string, unknown>;
 }
 

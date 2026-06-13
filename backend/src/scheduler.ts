@@ -4,17 +4,9 @@
  * Reuses runGcpSync / runDnsSync logic from the respective route modules.
  */
 import db from './db';
-import { decrypt } from './lib/crypto';
-import { listGcpInstances } from './gcp/sync';
-import { refreshBillingCache, loadPriceCache, isCacheStale } from './gcp/billing';
-import { listHetznerServers } from './hetzner/sync';
-import { listAwsInstances } from './aws/ec2';
-import { listCoolifyApps } from './coolify/sync';
-import { listCloudSqlInstances } from './gcp/cloudsql';
-import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
 import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
-import { getRate, convert } from './lib/exchange-rates';
-import { upsertInstanceRow } from './lib/instances';
+import { syncConnectionInstances, getPreferredCurrency } from './lib/sync-runner';
+import { syncDnsForUser } from './lib/dns-sync';
 
 const TICK_MS = 60_000;
 
@@ -127,9 +119,16 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
 
     const preferredCurrency = await getPreferredCurrency();
 
-    for (const conn of connections) {
-      if (policy.sync_instances) totalInstances += await syncInstances(conn, preferredCurrency);
-      if (policy.sync_dns) totalDnsRecords += await syncDns(conn);
+    if (policy.sync_instances) {
+      for (const conn of connections) {
+        const { count } = await syncConnectionInstances(conn, preferredCurrency);
+        totalInstances += count;
+      }
+    }
+
+    // DNS is user-scoped, not connection-scoped — sync once per run, not once per connection
+    if (policy.sync_dns) {
+      totalDnsRecords += await syncDnsForUser(policy.user_id as string);
     }
 
     if (policy.sync_cost) {
@@ -195,11 +194,6 @@ function nextRunAt(intervalMinutes: number, extraMs = 0): Date {
   return new Date(Date.now() + intervalMinutes * 60_000 + extraMs);
 }
 
-async function getPreferredCurrency(): Promise<string> {
-  const row = await db('app_settings').where({ key: 'preferred_currency' }).first().catch(() => null);
-  return row?.value ?? 'USD';
-}
-
 async function getTargetConnections(policy: Record<string, unknown>): Promise<Record<string, unknown>[]> {
   const q = db('cloud_connections');
 
@@ -213,177 +207,4 @@ async function getTargetConnections(policy: Record<string, unknown>): Promise<Re
   q.where({ user_id: policy.user_id });
 
   return q.select('*');
-}
-
-async function syncInstances(conn: Record<string, unknown>, preferredCurrency: string): Promise<number> {
-  const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
-  let count = 0;
-
-  if (conn.provider === 'gcp') {
-    let priceCache: Map<string, number> | undefined;
-    let sourceCurrency = 'USD';
-    try {
-      if (await isCacheStale(db)) {
-        const result = await refreshBillingCache(credentials, db);
-        sourceCurrency = result.currency;
-        // Persist detected currency so we can use it when cache is fresh
-        await db('app_settings')
-          .insert({ key: 'billing_price_currency', value: sourceCurrency })
-          .onConflict('key').merge(['value']);
-      } else {
-        const row = await db('app_settings').where({ key: 'billing_price_currency' }).first().catch(() => null);
-        sourceCurrency = row?.value ?? 'USD';
-      }
-      priceCache = await loadPriceCache(db);
-    } catch { /* non-fatal */ }
-
-    const rate = await getRate(sourceCurrency, preferredCurrency);
-
-    const savedProjects = await db('projects_or_accounts')
-      .where({ connection_id: conn.id })
-      .select('id', 'external_id');
-
-    const projects = savedProjects.length
-      ? savedProjects.map((p: { id: string; external_id: string }) => ({ id: p.id, externalId: p.external_id }))
-      : [{ id: null, externalId: (credentials.project_id as string) || conn.name }];
-
-    for (const project of projects) {
-      try {
-        const instances = await listGcpInstances(project.externalId as string, credentials, priceCache);
-        for (const inst of instances) {
-          await upsertInstanceRow({
-            ...inst,
-            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-            provider: 'gcp',
-            connectionId: conn.id as string,
-            projectId: project.id as string | null,
-          });
-          count++;
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[scheduler] GCP project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-      }
-    }
-    // Cloud SQL (non-fatal if API not enabled)
-    for (const project of projects) {
-      try {
-        const sqlInstances = await listCloudSqlInstances(project.externalId as string, credentials);
-        for (const inst of sqlInstances) {
-          await upsertInstanceRow({
-            ...inst,
-            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-            provider: 'gcp',
-            resourceType: 'cloudsql',
-            connectionId: conn.id as string,
-            projectId: project.id as string | null,
-          });
-          count++;
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[scheduler] Cloud SQL project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-      }
-    }
-  } else if (conn.provider === 'hetzner') {
-    const rate = await getRate('EUR', preferredCurrency);
-    const servers = await listHetznerServers(credentials.token as string);
-    for (const inst of servers) {
-      await upsertInstanceRow({
-        ...inst,
-        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-        provider: 'hetzner',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  } else if (conn.provider === 'aws') {
-    const rate = await getRate('USD', preferredCurrency);
-    const instances = await listAwsInstances(credentials);
-    for (const inst of instances) {
-      await upsertInstanceRow({
-        ...inst,
-        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-        provider: 'aws',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  } else if (conn.provider === 'coolify') {
-    const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
-    for (const inst of apps) {
-      await upsertInstanceRow({
-        ...inst,
-        provider: 'coolify',
-        resourceType: 'app',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  }
-
-  await db('cloud_connections').where({ id: conn.id }).update({
-    status: 'active',
-    last_sync_at: new Date(),
-    last_error: null,
-  });
-
-  return count;
-}
-
-async function syncDns(conn: Record<string, unknown>): Promise<number> {
-  // Find dns_connections belonging to same user
-  const dnsConns = await db('dns_connections').where({ user_id: conn.user_id }).select('*');
-  let count = 0;
-
-  for (const dnsConn of dnsConns) {
-    try {
-      const credentials = JSON.parse(decrypt(dnsConn.credentials_enc as string)) as { token: string };
-
-      if (dnsConn.provider === 'cloudflare') {
-        const zones = await listCloudflareZones(credentials.token);
-        for (const zone of zones) {
-          const records = await listCloudflareRecords(credentials.token, zone.id);
-          for (const rec of records) {
-            await db('dns_records')
-              .insert({
-                dns_connection_id: dnsConn.id,
-                zone: zone.name,
-                zone_id: zone.id,
-                record_id: rec.id,
-                name: rec.name,
-                type: rec.type,
-                value: rec.content,
-                ttl: rec.ttl,
-                proxied: rec.proxied,
-                last_seen_at: new Date(),
-              })
-              .onConflict(['dns_connection_id', 'record_id'])
-              .merge(['name', 'type', 'value', 'ttl', 'proxied', 'last_seen_at', 'updated_at']);
-            count++;
-          }
-        }
-        await db('dns_connections').where({ id: dnsConn.id }).update({
-          status: 'active',
-          last_sync_at: new Date(),
-          last_error: null,
-        });
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      await db('dns_connections').where({ id: dnsConn.id }).update({
-        status: 'error',
-        last_error: message,
-      });
-    }
-  }
-
-  return count;
 }

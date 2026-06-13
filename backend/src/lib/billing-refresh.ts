@@ -86,6 +86,10 @@ export async function runBillingForConnections(
       }
 
       for (const row of rows) {
+        // Store the RAW provider amount + currency as the source of truth.
+        // amount_usd/currency are kept as a denormalised cache in the preferred
+        // currency; the read path (routes/billing) recomputes from source so a
+        // later currency change never corrupts history.
         const rate = await getRate(row.currency, preferredCurrency);
         const convertedAmount = convert(row.amount_usd, rate);
         await db('billing_actuals')
@@ -96,12 +100,14 @@ export async function runBillingForConnections(
             project_id: row.project_id,
             project_name: row.project_name,
             service: row.service,
+            source_amount: row.amount_usd,
+            source_currency: row.currency,
             amount_usd: convertedAmount,
             currency: preferredCurrency,
             fetched_at: new Date(),
           })
           .onConflict(['connection_id', 'period', 'project_id', 'service'])
-          .merge(['amount_usd', 'currency', 'project_name', 'fetched_at']);
+          .merge(['source_amount', 'source_currency', 'amount_usd', 'currency', 'project_name', 'fetched_at']);
       }
 
       results.push({

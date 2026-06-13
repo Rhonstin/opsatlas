@@ -1,8 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
-import { decrypt } from '../lib/crypto';
-import { listCloudflareZones, listCloudflareRecords } from '../dns/cloudflare';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
+import { syncDnsConnection } from '../lib/dns-sync';
 
 const router = Router();
 
@@ -22,56 +21,12 @@ router.post('/:connection_id', requireAdmin, async (req: AuthRequest, res: Respo
 
   res.status(202).json({ status: 'syncing', connection_id: conn.id });
 
-  runDnsSync(conn).catch(() => {/* already handled inside */});
-});
-
-async function runDnsSync(conn: Record<string, string>) {
-  try {
-    const credentials = JSON.parse(decrypt(conn.credentials_enc)) as { token: string };
-
-    if (conn.provider === 'cloudflare') {
-      const zones = await listCloudflareZones(credentials.token);
-      let totalRecords = 0;
-
-      for (const zone of zones) {
-        const records = await listCloudflareRecords(credentials.token, zone.id);
-
-        for (const rec of records) {
-          await db('dns_records')
-            .insert({
-              dns_connection_id: conn.id,
-              zone: zone.name,
-              zone_id: zone.id,
-              record_id: rec.id,
-              name: rec.name,
-              type: rec.type,
-              value: rec.content,
-              ttl: rec.ttl,
-              proxied: rec.proxied,
-              last_seen_at: new Date(),
-            })
-            .onConflict(['dns_connection_id', 'record_id'])
-            .merge(['name', 'type', 'value', 'ttl', 'proxied', 'last_seen_at', 'updated_at']);
-          totalRecords++;
-        }
-      }
-
-      await db('dns_connections').where({ id: conn.id }).update({
-        status: 'active',
-        last_sync_at: new Date(),
-        last_error: null,
-      });
-
-      console.log(`[dns-sync] Cloudflare: synced ${totalRecords} records across ${zones.length} zones`);
-    }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    await db('dns_connections').where({ id: conn.id }).update({
-      status: 'error',
-      last_error: message,
+  // Shared with the scheduler: upserts records and prunes ones deleted at the provider.
+  syncDnsConnection(conn)
+    .then((n) => console.log(`[dns-sync] connection ${conn.id}: ${n} records`))
+    .catch((err: unknown) => {
+      console.error(`[dns-sync] Error for connection ${conn.id}:`, err instanceof Error ? err.message : err);
     });
-    console.error(`[dns-sync] Error for connection ${conn.id}:`, message);
-  }
-}
+});
 
 export default router;

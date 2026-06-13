@@ -79,6 +79,9 @@ async function listInstancesInRegion(
 
     for (const reservation of resp.Reservations ?? []) {
       for (const inst of reservation.Instances ?? []) {
+        // Terminated instances disappear from EC2 within ~1h and carry no cost —
+        // skip them so they don't clutter the inventory or linger in the DB.
+        if (inst.State?.Name === 'terminated') continue;
         results.push(normalizeInstance(inst, region));
       }
     }
