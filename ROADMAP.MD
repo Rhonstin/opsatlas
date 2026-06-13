@@ -374,29 +374,28 @@ Outcome of the full-system audit: RBAC enforcement, crypto hardening, scheduler 
 - [ ] Structured logging (pino) with request IDs
 - [ ] Retry/backoff framework for provider API calls
 
-### Milestone 17 — Data Collection Correctness *(proposed — audit 2026-06-13)*
-Fix systemic data-quality issues found in the cloud data-collection audit. Full details: `wiki/opsatlas-data-collection-audit-2026-06-13.md`.
+### Milestone 17 — Data Collection Correctness ✅ *(Stage A+B — June 2026)*
+Fix systemic data-quality issues found in the cloud data-collection audit. Full details: `wiki/opsatlas-data-collection-audit-2026-06-13.md`. Covered by `test/sync-runner.test.ts`, `test/cloudflare.test.ts`, `test/billing.test.ts`.
 
-#### Stage A — correctness of existing data (critical)
-- [ ] **Unify currency conversion**: manual sync (`routes/sync.ts`) stores raw provider currency (Hetzner EUR shown as preferred currency!) while scheduler converts — move conversion into the shared upsert layer so both paths agree
-- [ ] **Fix `billing_actuals.amount_usd` semantics**: column stores the *converted* amount — migrate to `amount` + `source_currency` (+ convert on read), or the column name lies and history breaks on currency change
-- [ ] **DNS sync once per policy run**: scheduler currently re-syncs ALL user DNS connections once per cloud connection (N× duplicate Cloudflare calls + upsert races)
-- [ ] **Stale resource cleanup**: instances and dns_records deleted in the cloud linger forever (upsert-only); after a successful sync, delete or flag rows with `last_seen_at` older than the run start
-- [ ] **Cloudflare pagination**: zones (`per_page=100`) and records (`per_page=1000`) have no pagination loop — silent truncation; honor `result_info`
-- [ ] **Cloud SQL pagination**: handle `nextPageToken` (currently `maxResults=500` hard cap)
+#### Stage A — correctness of existing data ✅
+- [x] **Unified currency conversion**: a single shared `lib/sync-runner.ts` `syncConnectionInstances()` now powers both the manual route and the scheduler, so conversion is applied identically (Hetzner EUR no longer leaks through unconverted)
+- [x] **Fixed `billing_actuals` semantics**: migration `20240025` adds `source_amount` + `source_currency` (raw provider values); the read path converts to the current display currency, so changing currency never corrupts history
+- [x] **DNS sync once per policy run**: moved out of the per-connection loop into `syncDnsForUser()` (was N× duplicate Cloudflare calls)
+- [x] **Stale resource cleanup**: instances and dns_records not refreshed since the run start are pruned after a clean sync; skipped on a failed listing so a transient blip can't wipe live rows
+- [x] **Cloudflare pagination**: `cfFetchAll()` follows `result_info.total_pages` for both zones and records
+- [x] **Cloud SQL pagination**: follows `nextPageToken`
 
-#### Stage B — completeness
-- [ ] Coolify: real service status from API (hardcoded `RUNNING`); show costs as "n/a" not $0
-- [ ] DNS: sync all record types (TXT/MX/SRV) or make types configurable per connection
-- [ ] GCP: regional disk pricing from SKU catalog (hardcoded us-central1 rates); extract `preemptible` flag from raw_payload
-- [ ] AWS: `session_token` support in Cost Explorer (temporary credentials); skip `terminated` instances
-- [ ] Hetzner billing: include IPv6 primary IPs; warn on price-location fallback
+#### Stage B — completeness ✅ *(partial — see Stage C for deferred pricing depth)*
+- [x] Coolify: real service status from API; costs stored as `null` ("—", not "$0")
+- [x] DNS: all record types synced (TXT/MX/SRV included; `type=` filter removed)
+- [x] AWS: `session_token` support in Cost Explorer (temporary STS/SSO credentials); `terminated` instances skipped
+- [x] Hetzner billing: IPv6 primary IPs priced by type + location
+- [ ] GCP: regional disk pricing from SKU catalog (still hardcoded us-central1 rates); surface `preemptible`/SPOT flag — deferred, needs disk SKUs in the price catalog
 - [ ] billing-refresh: per-connection transactional upsert + "N/M connections ok" reporting
 
-#### Stage C — coverage extensions
+#### Stage C — coverage extensions *(deferred — larger features)*
 - [ ] AWS: RDS, EBS volumes, Elastic IPs
 - [ ] GCP: GKE nodes, unattached disks, load balancers, static IPs; network egress in estimates; sustained-use/CUD discount modeling
-- [ ] Index `billing_actuals` for `(user_id, period)` query pattern
 - [ ] exchange-rates: separate `lastAttemptAt` from `fetchedAt` (true rate age currently lost on fallback)
 
 ---
