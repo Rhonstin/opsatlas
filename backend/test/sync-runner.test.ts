@@ -97,6 +97,62 @@ describe('syncConnectionInstances', () => {
     ).rejects.toThrow();
 
     const keep = await db('instances').where({ connection_id: connId, instance_id: 'keep' }).first();
-    expect(keep).toBeDefined(); // not deleted — listing failed, cleanup skipped
+    expect(keep).toBeDefined();
+  });
+
+  it('syncs multiple instances and updates connection status to active', async () => {
+    listMock.mockResolvedValue([
+      hetznerServer('s1', 5),
+      hetznerServer('s2', 10),
+      hetznerServer('s3', 15),
+    ]);
+
+    const { count } = await syncConnectionInstances(
+      { id: connId, provider: 'hetzner', name: 'h1', user_id: userId, credentials_enc: encrypt(JSON.stringify({ token: 'x' })) },
+      'USD',
+    );
+
+    expect(count).toBe(3);
+    const conn = await db('cloud_connections').where({ id: connId }).first();
+    expect(conn.status).toBe('active');
+    expect(conn.last_sync_at).toBeDefined();
+    expect(conn.last_error).toBeNull();
+  });
+
+  it('sets connection status to error when listing throws', async () => {
+    listMock.mockRejectedValue(new Error('API down'));
+
+    await expect(
+      syncConnectionInstances(
+        { id: connId, provider: 'hetzner', name: 'h1', user_id: userId, credentials_enc: encrypt(JSON.stringify({ token: 'x' })) },
+        'USD',
+      ),
+    ).rejects.toThrow();
+
+    const conn = await db('cloud_connections').where({ id: connId }).first();
+    expect(conn.status).toBe('error');
+    expect(conn.last_error).toContain('API down');
+  });
+
+  it('updates last_seen_at for existing instances on re-sync', async () => {
+    // First sync
+    listMock.mockResolvedValue([hetznerServer('s1', 5)]);
+    await syncConnectionInstances(
+      { id: connId, provider: 'hetzner', name: 'h1', user_id: userId, credentials_enc: encrypt(JSON.stringify({ token: 'x' })) },
+      'USD',
+    );
+    const first = await db('instances').where({ connection_id: connId, instance_id: 's1' }).first();
+    const firstSeen = new Date(first.last_seen_at).getTime();
+
+    // Wait a tiny bit then re-sync
+    await new Promise((r) => setTimeout(r, 10));
+    listMock.mockResolvedValue([hetznerServer('s1', 5)]);
+    await syncConnectionInstances(
+      { id: connId, provider: 'hetzner', name: 'h1', user_id: userId, credentials_enc: encrypt(JSON.stringify({ token: 'x' })) },
+      'USD',
+    );
+    const second = await db('instances').where({ connection_id: connId, instance_id: 's1' }).first();
+    const secondSeen = new Date(second.last_seen_at).getTime();
+    expect(secondSeen).toBeGreaterThanOrEqual(firstSeen);
   });
 });

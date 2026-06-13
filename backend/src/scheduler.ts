@@ -4,10 +4,12 @@
  * Reuses runGcpSync / runDnsSync logic from the respective route modules.
  */
 import db from './db';
-import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
+import { runBillingForConnections, currentPeriod, aggregateResults } from './lib/billing-refresh';
 import { syncConnectionInstances, getPreferredCurrency } from './lib/sync-runner';
 import { syncDnsForUser } from './lib/dns-sync';
+import { logger } from './lib/logger';
 
+const log = logger.child({ module: 'scheduler' });
 const TICK_MS = 60_000;
 
 // Max backoff: 24 h
@@ -23,11 +25,11 @@ const activeRuns = new Set<Promise<void>>();
 let intervalHandle: NodeJS.Timeout | null = null;
 
 export function startScheduler(): { stop: () => Promise<void> } {
-  console.log('[scheduler] started — tick every 60 s');
+  log.info('scheduler started — tick every 60 s');
 
   // Recover from a previous crash: anything still 'running' was interrupted
   recoverInterruptedRuns().catch((err) => {
-    console.error('[scheduler] failed to recover interrupted runs:', err);
+    log.error({ err }, 'failed to recover interrupted runs');
   });
 
   intervalHandle = setInterval(tick, TICK_MS);
@@ -37,7 +39,7 @@ export function startScheduler(): { stop: () => Promise<void> } {
       if (intervalHandle) clearInterval(intervalHandle);
       intervalHandle = null;
       if (activeRuns.size > 0) {
-        console.log(`[scheduler] waiting for ${activeRuns.size} active run(s) to finish…`);
+        log.info({ activeRuns: activeRuns.size }, 'waiting for active runs to finish');
         await Promise.allSettled([...activeRuns]);
       }
     },
@@ -54,7 +56,7 @@ async function recoverInterruptedRuns(): Promise<void> {
     .update({ status: 'error', error: 'interrupted by restart', finished_at: new Date() });
 
   if (policies || runs) {
-    console.warn(`[scheduler] recovered ${policies} policy(ies) and ${runs} run(s) interrupted by previous shutdown`);
+    log.warn({ policies, runs }, 'recovered interrupted runs from previous shutdown');
   }
 }
 
@@ -74,7 +76,7 @@ async function tick(): Promise<void> {
         try {
           await runPolicy(policy);
         } catch (err) {
-          console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
+          log.error({ policyId: policy.id, err }, 'uncaught error for policy');
         }
       }
     });
@@ -82,7 +84,7 @@ async function tick(): Promise<void> {
     activeRuns.add(batch);
     batch.finally(() => activeRuns.delete(batch));
   } catch (err) {
-    console.error('[scheduler] tick error:', err);
+    log.error({ err }, 'tick error');
   }
 }
 
@@ -134,13 +136,13 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
     if (policy.sync_cost) {
       const period = currentPeriod();
       const billingResults = await runBillingForConnections(connections, period);
+      const agg = aggregateResults(billingResults);
       const errors = billingResults.filter((r) => r.status === 'error');
       if (errors.length > 0) {
-        console.warn(`[scheduler] policy "${policy.name}" billing errors:`, errors.map((r) => `${r.connection_name}: ${r.message}`).join(', '));
+        log.warn({ policy: policy.name, ok: agg.ok, total: agg.total, errored: agg.errored, errors: errors.map((r) => r.connection_name) }, 'billing partial failure');
       } else {
-        const ok = billingResults.filter((r) => r.status === 'ok');
-        totalCostRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
-        console.log(`[scheduler] policy "${policy.name}" billing: ${totalCostRows} rows upserted for ${period}`);
+        totalCostRows = billingResults.filter((r) => r.status === 'ok').reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
+        log.info({ policy: policy.name, ok: agg.ok, total: agg.total, rows: totalCostRows, period }, 'billing ok');
       }
     }
 
@@ -162,7 +164,7 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
       finished_at: now,
     });
 
-    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections, ${totalInstances} instances, ${totalDnsRecords} DNS records, ${totalCostRows} cost rows)`);
+    log.info({ policy: policy.name, connections: connections.length, instances: totalInstances, dns: totalDnsRecords, cost: totalCostRows }, 'policy completed');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const failures = (policy.failure_count as number) + 1;
@@ -186,7 +188,7 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
       finished_at: now,
     });
 
-    console.error(`[scheduler] policy "${policy.name}" failed (backoff ${backoffMinutes} min):`, message);
+    log.error({ policy: policy.name, backoffMinutes, err: message }, 'policy failed');
   }
 }
 

@@ -22,6 +22,8 @@ export default function ConnectionsTab() {
   const [projectsModal, setProjectsModal] = useState<Connection | null>(null);
   const [editModal, setEditModal] = useState<Connection | null>(null);
   const [projectCounts, setProjectCounts] = useState<Record<string, number>>({});
+  const [projectStatus, setProjectStatus] = useState<Record<string, { ok: number; errored: number; errors: string[] }>>({});
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
   type ConnSortKey = 'name' | 'provider' | 'status' | 'last_sync_at';
   const { sorted: sortedConns, toggle, indicator } = useSort<Connection & Record<string, unknown>, ConnSortKey>(
@@ -34,14 +36,27 @@ export default function ConnectionsTab() {
       const data = await api.getConnections();
       setConnections(data);
       const projectConns = data.filter((c) => c.provider === 'gcp' || c.provider === 'coolify');
-      const counts = await Promise.all(
-        projectConns.map((c) =>
-          api.getSelectedProjects(c.id)
-            .then((ps) => [c.id, ps.length] as [string, number])
-            .catch(() => [c.id, 0] as [string, number]),
-        ),
+      const results = await Promise.all(
+        projectConns.map(async (c) => {
+          try {
+            const ps = await api.getSelectedProjects(c.id);
+            const ok = ps.filter((p) => !p.last_error).length;
+            const errored = ps.filter((p) => !!p.last_error).length;
+            const errors = ps.filter((p): p is typeof p & { last_error: string } => !!p.last_error).map((p) => `${p.name}: ${p.last_error}`);
+            return { id: c.id, count: ps.length, ok, errored, errors };
+          } catch {
+            return { id: c.id, count: 0, ok: 0, errored: 0, errors: [] };
+          }
+        }),
       );
-      setProjectCounts(Object.fromEntries(counts));
+      const counts: Record<string, number> = {};
+      const status: Record<string, { ok: number; errored: number; errors: string[] }> = {};
+      for (const r of results) {
+        counts[r.id] = r.count;
+        status[r.id] = { ok: r.ok, errored: r.errored, errors: r.errors };
+      }
+      setProjectCounts(counts);
+      setProjectStatus(status);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load connections');
     } finally {
@@ -139,14 +154,38 @@ export default function ConnectionsTab() {
               <div key={conn.id} className={connStyles.row}>
                 <span className={connStyles.name}>{conn.name}</span>
                 <span className={connStyles.provider}>{conn.provider.toUpperCase()}</span>
-                <span><span className={`badge badge-${conn.status}`}>{conn.status}</span></span>
+                <span>                <span>
+                  <span className={`badge badge-${conn.status}`}>{conn.status}</span>
+                  {projectStatus[conn.id]?.errored > 0 && conn.status === 'active' && (
+                    <span className="badge badge-warning" style={{ marginLeft: 4 }}>partial</span>
+                  )}
+                </span></span>
                 <span>
                   {conn.provider === 'gcp' ? (
-                    <button className={connStyles.projectsBtn} onClick={() => setProjectsModal(conn)}>
-                      {projectCounts[conn.id] != null
-                        ? `${projectCounts[conn.id]} project${projectCounts[conn.id] !== 1 ? 's' : ''}`
-                        : '—'}
-                    </button>
+                    <span>
+                      <button className={connStyles.projectsBtn} onClick={() => setProjectsModal(conn)}>
+                        {projectCounts[conn.id] != null
+                          ? `${projectStatus[conn.id]?.ok ?? 0}/${projectCounts[conn.id]} synced`
+                          : '—'}
+                      </button>
+                      {projectStatus[conn.id]?.errored > 0 && (
+                        <button
+                          className={connStyles.projectsBtn}
+                          style={{ color: 'var(--error-color, #e53e3e)', marginLeft: 4, fontSize: 11 }}
+                          onClick={() => setExpandedProjects((prev) => ({ ...prev, [conn.id]: !prev[conn.id] }))}
+                          title={projectStatus[conn.id]?.errors.join('\n')}
+                        >
+                          {projectStatus[conn.id]?.errored} failed
+                        </button>
+                      )}
+                      {expandedProjects[conn.id] && projectStatus[conn.id]?.errors.length > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--error-color, #e53e3e)', marginTop: 2 }}>
+                          {projectStatus[conn.id].errors.map((e, i) => (
+                            <div key={i} title={e}>• {e.split(':')[0]}</div>
+                          ))}
+                        </div>
+                      )}
+                    </span>
                   ) : conn.provider === 'coolify' ? (
                     <span className={connStyles.muted}>
                       {projectCounts[conn.id] != null

@@ -24,12 +24,14 @@ export default function BillingTab() {
     setRefreshing(true);
     try {
       const res = await api.refreshBilling(selectedPeriod || undefined);
-      const total = res.results?.length ?? 0;
-      const errors = res.results?.filter((r) => r.status === 'error').length ?? 0;
-      if (errors === 0) {
-        toast('success', `Billing fetched — ${total} provider${total !== 1 ? 's' : ''}`);
+      const results = res.results ?? [];
+      const ok = results.filter((r: { status: string }) => r.status === 'ok').length;
+      const errored = results.filter((r: { status: string }) => r.status === 'error').length;
+      const total = results.length;
+      if (errored === 0) {
+        toast('success', `Billing fetched — ${ok}/${total} connections ok`);
       } else {
-        toast('error', `${errors} provider${errors !== 1 ? 's' : ''} failed — check connections`);
+        toast('error', `${ok}/${total} connections ok (${errored} failed)`);
       }
     } catch (err: unknown) {
       toast('error', err instanceof Error ? err.message : 'Refresh failed');

@@ -1,26 +1,18 @@
 const BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('token');
-}
-
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // Also drop the middleware session cookie, or /login would bounce back to /dashboard
       document.cookie = 'opsatlas_session=; Path=/; Max-Age=0; SameSite=Lax';
       window.location.replace('/login');
     }
@@ -48,6 +40,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+
+  logout: () =>
+    request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
   getAuthProviders: () =>
     fetch(`${BASE}/auth/providers`)
@@ -257,6 +252,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ period }),
     }),
+
+  // Favorites
+  getFavorites: () => request<string[]>('/favorites'),
+
+  addFavorite: (instanceId: string) =>
+    request<{ ok: boolean }>(`/favorites/instances/${instanceId}/favorite`, { method: 'POST' }),
+
+  removeFavorite: (instanceId: string) =>
+    request<{ ok: boolean }>(`/favorites/instances/${instanceId}/favorite`, { method: 'DELETE' }),
+
+  // Tags
+  getTags: () => request<Tag[]>('/tags'),
+
+  createTag: (name: string, color: string) =>
+    request<Tag>('/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name, color }),
+    }),
+
+  updateTag: (id: string, data: { name?: string; color?: string }) =>
+    request<Tag>(`/tags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteTag: (id: string) =>
+    request<void>(`/tags/${id}`, { method: 'DELETE' }),
+
+  assignInstanceTags: (instanceId: string, tagIds: string[]) =>
+    request<Tag[]>(`/tags/instances/${instanceId}/tags`, {
+      method: 'POST',
+      body: JSON.stringify({ tagIds }),
+    }),
+
+  removeInstanceTag: (instanceId: string, tagId: string) =>
+    request<{ ok: boolean }>(`/tags/instances/${instanceId}/tags/${tagId}`, { method: 'DELETE' }),
 };
 
 export interface SyncRun {
@@ -268,6 +299,15 @@ export interface SyncRun {
   started_at: string;
   finished_at: string | null;
   error_log: string | null;
+}
+
+export interface Tag {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Instance {
@@ -292,6 +332,8 @@ export interface Instance {
   project_or_account_id: string | null;
   project_name: string | null;
   project_external_id: string | null;
+  is_favorite: boolean;
+  tags: Tag[];
   created_at: string;
 }
 

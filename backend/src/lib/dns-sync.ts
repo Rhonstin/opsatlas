@@ -5,10 +5,12 @@
 import db from '../db';
 import { decrypt } from './crypto';
 import { listCloudflareZones, listCloudflareRecords } from '../dns/cloudflare';
+import { logger } from './logger';
 
 /** Sync one DNS connection. Returns the number of records seen. Throws on failure. */
 export async function syncDnsConnection(conn: Record<string, unknown>): Promise<number> {
   const connId = conn.id as string;
+  const log = logger.child({ module: 'dns-sync', connectionId: connId, provider: conn.provider });
   const runStart = new Date();
   let count = 0;
 
@@ -54,9 +56,11 @@ export async function syncDnsConnection(conn: Record<string, unknown>): Promise<
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await db('dns_connections').where({ id: connId }).update({ status: 'error', last_error: message });
+    log.error({ err: message }, 'dns sync failed');
     throw err;
   }
 
+  log.info({ count }, 'dns sync completed');
   return count;
 }
 

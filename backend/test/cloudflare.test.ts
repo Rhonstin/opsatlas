@@ -4,12 +4,12 @@
  */
 import { vi, beforeEach, describe, expect, it } from 'vitest';
 
-vi.mock('../src/lib/http', () => ({ fetchWithTimeout: vi.fn() }));
+vi.mock('../src/lib/http', () => ({ fetchWithRetry: vi.fn() }));
 
 import { listCloudflareZones, listCloudflareRecords } from '../src/dns/cloudflare';
-import { fetchWithTimeout } from '../src/lib/http';
+import { fetchWithRetry } from '../src/lib/http';
 
-const fetchMock = fetchWithTimeout as unknown as ReturnType<typeof vi.fn>;
+const fetchMock = fetchWithRetry as unknown as ReturnType<typeof vi.fn>;
 
 function page(result: unknown[], pageNum: number, totalPages: number) {
   return { json: async () => ({ success: true, result, result_info: { page: pageNum, per_page: 50, total_pages: totalPages } }) };

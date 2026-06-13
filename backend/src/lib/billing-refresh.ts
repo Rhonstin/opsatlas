@@ -7,6 +7,7 @@ import { fetchGcpBillingActuals } from '../gcp/billing-actuals';
 import { fetchAwsCostActuals } from '../aws/cost-explorer';
 import { fetchHetznerBillingActuals } from '../hetzner/billing';
 import { getRate, convert } from './exchange-rates';
+import { logger } from './logger';
 
 export interface BillingRefreshRowResult {
   connection_id: string;
@@ -15,6 +16,22 @@ export interface BillingRefreshRowResult {
   status: 'ok' | 'skipped' | 'error';
   rows_upserted?: number;
   message?: string;
+}
+
+export interface BillingRefreshAggregate {
+  ok: number;
+  skipped: number;
+  errored: number;
+  total: number;
+}
+
+export function aggregateResults(results: BillingRefreshRowResult[]): BillingRefreshAggregate {
+  return {
+    ok: results.filter((r) => r.status === 'ok').length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    errored: results.filter((r) => r.status === 'error').length,
+    total: results.length,
+  };
 }
 
 export function currentPeriod(): string {
@@ -47,6 +64,7 @@ export async function runBillingForConnections(
   period: string,
 ): Promise<BillingRefreshRowResult[]> {
   const results: BillingRefreshRowResult[] = [];
+  const log = logger.child({ module: 'billing-refresh' });
 
   // Load preferred currency once for all connections
   const preferredCurrency = await db('app_settings')
@@ -85,30 +103,28 @@ export async function runBillingForConnections(
         rows = await fetchHetznerBillingActuals(credentials.token as string, period);
       }
 
-      for (const row of rows) {
-        // Store the RAW provider amount + currency as the source of truth.
-        // amount_usd/currency are kept as a denormalised cache in the preferred
-        // currency; the read path (routes/billing) recomputes from source so a
-        // later currency change never corrupts history.
-        const rate = await getRate(row.currency, preferredCurrency);
-        const convertedAmount = convert(row.amount_usd, rate);
-        await db('billing_actuals')
-          .insert({
-            connection_id: conn.id,
-            provider: conn.provider,
-            period,
-            project_id: row.project_id,
-            project_name: row.project_name,
-            service: row.service,
-            source_amount: row.amount_usd,
-            source_currency: row.currency,
-            amount_usd: convertedAmount,
-            currency: preferredCurrency,
-            fetched_at: new Date(),
-          })
-          .onConflict(['connection_id', 'period', 'project_id', 'service'])
-          .merge(['source_amount', 'source_currency', 'amount_usd', 'currency', 'project_name', 'fetched_at']);
-      }
+      await db.transaction(async (trx) => {
+        for (const row of rows) {
+          const rate = await getRate(row.currency, preferredCurrency);
+          const convertedAmount = convert(row.amount_usd, rate);
+          await trx('billing_actuals')
+            .insert({
+              connection_id: conn.id,
+              provider: conn.provider,
+              period,
+              project_id: row.project_id,
+              project_name: row.project_name,
+              service: row.service,
+              source_amount: row.amount_usd,
+              source_currency: row.currency,
+              amount_usd: convertedAmount,
+              currency: preferredCurrency,
+              fetched_at: new Date(),
+            })
+            .onConflict(['connection_id', 'period', 'project_id', 'service'])
+            .merge(['source_amount', 'source_currency', 'amount_usd', 'currency', 'project_name', 'fetched_at']);
+        }
+      });
 
       results.push({
         connection_id: conn.id as string,

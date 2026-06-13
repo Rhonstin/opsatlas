@@ -4,7 +4,7 @@
  * Auth reuses the same service account credentials as Compute Engine sync.
  */
 import { GoogleAuth } from 'google-auth-library';
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface CloudSqlInstance {
   instanceId: string;
@@ -115,7 +115,7 @@ export async function listCloudSqlInstances(
 
   do {
     const url = pageToken ? `${base}&pageToken=${encodeURIComponent(pageToken)}` : base;
-    const resp = await fetchWithTimeout(url, {
+    const resp = await fetchWithRetry(url, {
       headers: { Authorization: `Bearer ${token.token}` },
     });
 

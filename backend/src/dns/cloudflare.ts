@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface CloudflareZone {
   id: string;
@@ -31,7 +31,7 @@ interface CfResponse<T> {
 }
 
 async function cfFetch<T>(path: string, apiToken: string): Promise<CfResponse<T>> {
-  const res = await fetchWithTimeout(`https://api.cloudflare.com/client/v4${path}`, {
+  const res = await fetchWithRetry(`https://api.cloudflare.com/client/v4${path}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
   const data = (await res.json()) as CfResponse<T>;

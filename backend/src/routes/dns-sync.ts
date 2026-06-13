@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import db from '../db';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
 import { syncDnsConnection } from '../lib/dns-sync';
+import { logger } from '../lib/logger';
 
+const log = logger.child({ module: 'routes/dns-sync' });
 const router = Router();
 
 /**
@@ -23,9 +25,9 @@ router.post('/:connection_id', requireAdmin, async (req: AuthRequest, res: Respo
 
   // Shared with the scheduler: upserts records and prunes ones deleted at the provider.
   syncDnsConnection(conn)
-    .then((n) => console.log(`[dns-sync] connection ${conn.id}: ${n} records`))
+    .then((n) => log.info({ connectionId: conn.id, records: n }, 'dns sync done'))
     .catch((err: unknown) => {
-      console.error(`[dns-sync] Error for connection ${conn.id}:`, err instanceof Error ? err.message : err);
+      log.error({ connectionId: conn.id, err }, 'dns sync failed');
     });
 });
 

@@ -135,9 +135,9 @@
 - [x] IAM policy documented (`ec2:DescribeInstances`, `ec2:DescribeRegions`, `ce:GetCostAndUsage`)
 
 ### Milestone 5 — Multi-Account AWS
-- [ ] Multiple AWS connections
+- [x] Multiple AWS connections
 - [ ] Region selection per connection
-- [ ] Account filters on instances page
+- [x] Account filters on instances page
 - [ ] Sync health tracking per account
 
 ### Milestone 5A — Hetzner Integration ✅
@@ -148,7 +148,7 @@
 - [x] Hetzner connection test endpoint
 
 ### Milestone 5B — Hetzner Projects & Networking
-- [ ] Multiple Hetzner connections / projects
+- [x] Multiple Hetzner connections / projects
 - [ ] Network + firewall metadata sync
 - [ ] Labels from Hetzner mapped into internal tags (optional import)
 - [ ] Sync health tracking per Hetzner project
@@ -196,8 +196,8 @@
 - [x] Sync history log (`GET /sync/history`)
 - [x] Scheduled auto-sync (via Auto-Update Policies)
 - [x] Per-project error isolation — partial success accepted
-- [ ] Retry on transient errors
-- [ ] Per-project sync status in UI
+- [x] Retry on transient errors
+- [x] Per-project sync status in UI
 
 ### Milestone 10 — UI Polish ✅
 - [x] Dark theme with CSS variables
@@ -209,32 +209,32 @@
 - [x] Empty states with guidance text (all pages)
 - [x] Mobile-responsive layout (hamburger nav, table scroll, drawer snap)
 
-### Milestone 10A — Favorites
+### Milestone 10A — Favorites ✅
 Quickly pin important instances and surface them across the UI.
 
 **Goal:** one-click bookmarking for frequently used infrastructure.
 
 #### Work items
-- [ ] Add favorite / unfavorite action on instance rows and detail pages
-- [ ] Favorites-only filter on instances page
+- [x] Add favorite / unfavorite action on instance rows and detail pages
+- [x] Favorites-only filter on instances page
 - [ ] Favorites widget on dashboard
-- [ ] Persist favorites per user
-- [ ] Sort favorites above non-favorites (optional toggle)
-- [ ] API + DB support for favorites
+- [x] Persist favorites per user
+- [x] Sort favorites above non-favorites (optional toggle)
+- [x] API + DB support for favorites
 
-### Milestone 10B — Tags
+### Milestone 10B — Tags ✅
 Organize infrastructure with manual and provider-derived tags.
 
 **Goal:** flexible categorization like `production`, `db`, `client-a`, `urgent`, `gpu`.
 
 #### Work items
-- [ ] Create / edit / delete tags
-- [ ] Assign multiple tags to instances
-- [ ] Filter instances by one or many tags
-- [ ] Color-coded tags in tables and details
-- [ ] Bulk tag actions from instances table
+- [x] Create / edit / delete tags
+- [x] Assign multiple tags to instances
+- [x] Filter instances by one or many tags
+- [x] Color-coded tags in tables and details
+- [x] Bulk tag actions from instances table
 - [ ] Optional import of provider-native labels into tags
-- [ ] Tag management page
+- [x] Tag management page
 
 ### Milestone 11 — DNS Integration ✅
 Map domain names to compute instances by syncing DNS A/AAAA records.
@@ -309,7 +309,7 @@ Real billing data from cloud provider APIs.
 - [x] `GET /billing/actuals`, `GET /billing/periods`, `POST /billing/refresh`
 - [x] Billing page (period picker, top services, full line items) — `/dashboard/billing`
 - [x] Billing nav link enabled
-- [ ] Scheduled billing refresh via auto-update policy
+- [x] Scheduled billing refresh via auto-update policy
 
 ### Milestone 15A — Coolify Integration ✅ *(known gaps in M17)*
 Connect to self-hosted Coolify instances to surface deployed applications, projects, and domain names alongside cloud infrastructure.
@@ -367,12 +367,13 @@ Outcome of the full-system audit: RBAC enforcement, crypto hardening, scheduler 
 - [x] `update.sh` auto-backup (`pg_dump`, keep 7) before migrations
 - [x] Admin CLI (`node dist/cli.js`): list-users, create-admin/viewer, reset-password, set-role, disable-mfa
 - [x] CI gates: typecheck (backend + frontend) + backend integration tests before image build
+- [x] 77 integration tests (vitest + supertest, Postgres)
 - [x] Auth/RBAC integration test suite (22 tests, vitest + supertest, role × endpoint matrix)
 - [x] Frontend: settings page split into per-tab files, shared `lib/cost.ts` + `usePollUntil`, Next.js middleware route gating, dashboard error surfacing
 - [x] Instances JSON export (`GET /instances/export` + UI button; viewers get no cost fields)
-- [ ] httpOnly-cookie sessions (replace localStorage token — larger auth-flow change)
-- [ ] Structured logging (pino) with request IDs
-- [ ] Retry/backoff framework for provider API calls
+- [x] httpOnly-cookie sessions (replace localStorage token — larger auth-flow change)
+- [x] Structured logging (pino) with request IDs
+- [x] Retry/backoff framework for provider API calls
 
 ### Milestone 17 — Data Collection Correctness ✅ *(Stage A+B — June 2026)*
 Fix systemic data-quality issues found in the cloud data-collection audit. Full details: `wiki/opsatlas-data-collection-audit-2026-06-13.md`. Covered by `test/sync-runner.test.ts`, `test/cloudflare.test.ts`, `test/billing.test.ts`.
@@ -391,12 +392,12 @@ Fix systemic data-quality issues found in the cloud data-collection audit. Full 
 - [x] AWS: `session_token` support in Cost Explorer (temporary STS/SSO credentials); `terminated` instances skipped
 - [x] Hetzner billing: IPv6 primary IPs priced by type + location
 - [ ] GCP: regional disk pricing from SKU catalog (still hardcoded us-central1 rates); surface `preemptible`/SPOT flag — deferred, needs disk SKUs in the price catalog
-- [ ] billing-refresh: per-connection transactional upsert + "N/M connections ok" reporting
+- [x] billing-refresh: per-connection transactional upsert + "N/M connections ok" reporting
 
 #### Stage C — coverage extensions *(deferred — larger features)*
 - [ ] AWS: RDS, EBS volumes, Elastic IPs
 - [ ] GCP: GKE nodes, unattached disks, load balancers, static IPs; network egress in estimates; sustained-use/CUD discount modeling
-- [ ] exchange-rates: separate `lastAttemptAt` from `fetchedAt` (true rate age currently lost on fallback)
+- [x] exchange-rates: separate `lastAttemptAt` from `fetchedAt` (true rate age currently lost on fallback)
 
 ---
 
@@ -406,6 +407,7 @@ Fix systemic data-quality issues found in the cloud data-collection audit. Full 
 - `POST /auth/register`, `POST /auth/login` (rate-limited)
 - `POST /auth/mfa/confirm`, `GET /auth/mfa/setup`, `POST /auth/mfa/verify-setup`, `POST /auth/mfa/disable`, `GET /auth/mfa/status`
 - `POST /auth/google/callback`, `POST /auth/authentik/callback`, `GET /auth/providers`
+- `POST /auth/logout`
 - `GET|PUT /auth/config`, `GET|PUT /auth/sso-config` *(PUT admin-only)*, `GET|PUT /auth/google-config` *(admin)*
 - `GET /auth/me`
 
@@ -429,16 +431,16 @@ Fix systemic data-quality issues found in the cloud data-collection audit. Full 
 
 ### Favorites *(Milestone 10A)*
 - `GET /favorites`
-- `POST /instances/:id/favorite`
-- `DELETE /instances/:id/favorite`
+- `POST /favorites/instances/:id/favorite`
+- `DELETE /favorites/instances/:id/favorite`
 
 ### Tags *(Milestone 10B)*
 - `GET /tags`
 - `POST /tags`
 - `PATCH /tags/:id`
 - `DELETE /tags/:id`
-- `POST /instances/:id/tags`
-- `DELETE /instances/:id/tags/:tag_id`
+- `POST /tags/instances/:id/tags`
+- `DELETE /tags/instances/:id/tags/:tagId`
 
 ### Sync
 - `POST /sync/:connection_id`
@@ -500,8 +502,8 @@ Fix systemic data-quality issues found in the cloud data-collection audit. Full 
 - [x] Instance detail drawer (hardware, network, cost, timeline, project, DB version)
 - [x] Auto-update policies with audit trail
 - [x] Toast notifications + empty states + mobile layout
-- [ ] Favorites
-- [ ] Tags
+- [x] Favorites
+- [x] Tags
 
 ### Out of MVP Scope
 - ~~RBAC / multi-user~~ → **implemented** (admin/viewer roles, server-side enforcement, SSO via Google/Authentik, MFA) — teams still out of scope

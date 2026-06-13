@@ -2,6 +2,9 @@
  * index.ts boots it for production; tests import it directly via supertest. */
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import pinoHttp from 'pino-http';
+import { logger } from './lib/logger';
 import authRouter from './routes/auth';
 import connectionsRouter from './routes/connections';
 import syncRouter from './routes/sync';
@@ -11,6 +14,8 @@ import dnsSyncRouter from './routes/dns-sync';
 import dnsRecordsRouter from './routes/dns-records';
 import autoUpdateRouter from './routes/auto-update';
 import billingRouter from './routes/billing';
+import favoritesRouter from './routes/favorites';
+import tagsRouter from './routes/tags';
 import configRouter from './routes/config';
 import { authenticateToken } from './middleware/auth';
 import db from './db';
@@ -21,7 +26,9 @@ export function buildApp(): express.Express {
   // Behind Caddy/Nginx in production — needed so rate limiting sees real client IPs
   app.set('trust proxy', 1);
 
-  app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
+  app.use(pinoHttp({ logger, genReqId: () => crypto.randomUUID() }));
+  app.use(cookieParser());
+  app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
   app.use(express.json());
 
   app.get('/health', async (_req, res) => {
@@ -42,6 +49,8 @@ export function buildApp(): express.Express {
   app.use('/dns/records', authenticateToken, dnsRecordsRouter);
   app.use('/auto-update-policies', authenticateToken, autoUpdateRouter);
   app.use('/billing', authenticateToken, billingRouter);
+  app.use('/favorites', authenticateToken, favoritesRouter);
+  app.use('/tags', authenticateToken, tagsRouter);
   app.use('/config', authenticateToken, configRouter);
 
   return app;

@@ -16,6 +16,7 @@ import { listCoolifyApps } from '../coolify/sync';
 import { listCloudSqlInstances } from '../gcp/cloudsql';
 import { getRate, convert } from './exchange-rates';
 import { upsertInstanceRow } from './instances';
+import { logger } from './logger';
 
 export interface ConnectionSyncResult {
   count: number;
@@ -54,9 +55,11 @@ export async function syncConnectionInstances(
   const currency = preferredCurrency ?? (await getPreferredCurrency());
   const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
   const connId = conn.id as string;
+  const log = logger.child({ module: 'sync', connectionId: connId, provider: conn.provider });
   const runStart = new Date();
   let count = 0;
   const errors: string[] = [];
+  log.info('sync started');
 
   try {
     if (conn.provider === 'gcp') {
@@ -167,6 +170,7 @@ export async function syncConnectionInstances(
   } catch (err: unknown) {
     const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     await db('cloud_connections').where({ id: connId }).update({ status: 'error', last_error: message });
+    log.error({ err: message }, 'sync failed');
     throw err;
   }
 
@@ -176,6 +180,7 @@ export async function syncConnectionInstances(
     last_error: errors.length ? errors.join('; ').slice(0, 500) : null,
   });
 
+  log.info({ count, errors: errors.length }, 'sync completed');
   return { count, errors };
 }
 

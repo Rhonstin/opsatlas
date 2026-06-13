@@ -4,7 +4,7 @@
  * Applications and services are normalized to the shared Instance model.
  */
 
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface CoolifyInstance {
   instanceId: string;
@@ -74,7 +74,7 @@ function parseFqdn(fqdn: string | null | undefined): string[] {
 
 async function coolifyFetch<T>(baseUrl: string, token: string, path: string): Promise<T> {
   const url = `${baseUrl.replace(/\/$/, '')}/api/v1${path}`;
-  const res = await fetchWithTimeout(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
   if (!res.ok) {

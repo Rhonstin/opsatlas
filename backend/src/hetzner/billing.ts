@@ -10,7 +10,7 @@
  *
  * Amounts are in EUR; currency field is set to 'EUR'.
  */
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface HetznerBillingRow {
   project_id: null;
@@ -91,7 +91,7 @@ function net(entry: PriceEntry): number {
 }
 
 async function hetznerGet<T>(token: string, path: string): Promise<T> {
-  const res = await fetchWithTimeout(`https://api.hetzner.cloud/v1${path}`, {
+  const res = await fetchWithRetry(`https://api.hetzner.cloud/v1${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
