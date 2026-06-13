@@ -4,17 +4,12 @@
  * Reuses runGcpSync / runDnsSync logic from the respective route modules.
  */
 import db from './db';
-import { decrypt } from './lib/crypto';
-import { listGcpInstances } from './gcp/sync';
-import { refreshBillingCache, loadPriceCache, isCacheStale } from './gcp/billing';
-import { listHetznerServers } from './hetzner/sync';
-import { listAwsInstances } from './aws/ec2';
-import { listCoolifyApps } from './coolify/sync';
-import { listCloudSqlInstances } from './gcp/cloudsql';
-import { listCloudflareZones, listCloudflareRecords } from './dns/cloudflare';
-import { runBillingForConnections, currentPeriod } from './lib/billing-refresh';
-import { getRate, convert } from './lib/exchange-rates';
+import { runBillingForConnections, currentPeriod, aggregateResults } from './lib/billing-refresh';
+import { syncConnectionInstances, getPreferredCurrency } from './lib/sync-runner';
+import { syncDnsForUser } from './lib/dns-sync';
+import { logger } from './lib/logger';
 
+const log = logger.child({ module: 'scheduler' });
 const TICK_MS = 60_000;
 
 // Max backoff: 24 h
@@ -30,11 +25,11 @@ const activeRuns = new Set<Promise<void>>();
 let intervalHandle: NodeJS.Timeout | null = null;
 
 export function startScheduler(): { stop: () => Promise<void> } {
-  console.log('[scheduler] started — tick every 60 s');
+  log.info('scheduler started — tick every 60 s');
 
   // Recover from a previous crash: anything still 'running' was interrupted
   recoverInterruptedRuns().catch((err) => {
-    console.error('[scheduler] failed to recover interrupted runs:', err);
+    log.error({ err }, 'failed to recover interrupted runs');
   });
 
   intervalHandle = setInterval(tick, TICK_MS);
@@ -44,7 +39,7 @@ export function startScheduler(): { stop: () => Promise<void> } {
       if (intervalHandle) clearInterval(intervalHandle);
       intervalHandle = null;
       if (activeRuns.size > 0) {
-        console.log(`[scheduler] waiting for ${activeRuns.size} active run(s) to finish…`);
+        log.info({ activeRuns: activeRuns.size }, 'waiting for active runs to finish');
         await Promise.allSettled([...activeRuns]);
       }
     },
@@ -61,7 +56,7 @@ async function recoverInterruptedRuns(): Promise<void> {
     .update({ status: 'error', error: 'interrupted by restart', finished_at: new Date() });
 
   if (policies || runs) {
-    console.warn(`[scheduler] recovered ${policies} policy(ies) and ${runs} run(s) interrupted by previous shutdown`);
+    log.warn({ policies, runs }, 'recovered interrupted runs from previous shutdown');
   }
 }
 
@@ -81,7 +76,7 @@ async function tick(): Promise<void> {
         try {
           await runPolicy(policy);
         } catch (err) {
-          console.error(`[scheduler] uncaught error for policy ${policy.id}:`, err);
+          log.error({ policyId: policy.id, err }, 'uncaught error for policy');
         }
       }
     });
@@ -89,7 +84,7 @@ async function tick(): Promise<void> {
     activeRuns.add(batch);
     batch.finally(() => activeRuns.delete(batch));
   } catch (err) {
-    console.error('[scheduler] tick error:', err);
+    log.error({ err }, 'tick error');
   }
 }
 
@@ -126,21 +121,28 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
 
     const preferredCurrency = await getPreferredCurrency();
 
-    for (const conn of connections) {
-      if (policy.sync_instances) totalInstances += await syncInstances(conn, preferredCurrency);
-      if (policy.sync_dns) totalDnsRecords += await syncDns(conn);
+    if (policy.sync_instances) {
+      for (const conn of connections) {
+        const { count } = await syncConnectionInstances(conn, preferredCurrency);
+        totalInstances += count;
+      }
+    }
+
+    // DNS is user-scoped, not connection-scoped — sync once per run, not once per connection
+    if (policy.sync_dns) {
+      totalDnsRecords += await syncDnsForUser(policy.user_id as string);
     }
 
     if (policy.sync_cost) {
       const period = currentPeriod();
       const billingResults = await runBillingForConnections(connections, period);
+      const agg = aggregateResults(billingResults);
       const errors = billingResults.filter((r) => r.status === 'error');
       if (errors.length > 0) {
-        console.warn(`[scheduler] policy "${policy.name}" billing errors:`, errors.map((r) => `${r.connection_name}: ${r.message}`).join(', '));
+        log.warn({ policy: policy.name, ok: agg.ok, total: agg.total, errored: agg.errored, errors: errors.map((r) => r.connection_name) }, 'billing partial failure');
       } else {
-        const ok = billingResults.filter((r) => r.status === 'ok');
-        totalCostRows = ok.reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
-        console.log(`[scheduler] policy "${policy.name}" billing: ${totalCostRows} rows upserted for ${period}`);
+        totalCostRows = billingResults.filter((r) => r.status === 'ok').reduce((s, r) => s + (r.rows_upserted ?? 0), 0);
+        log.info({ policy: policy.name, ok: agg.ok, total: agg.total, rows: totalCostRows, period }, 'billing ok');
       }
     }
 
@@ -162,7 +164,7 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
       finished_at: now,
     });
 
-    console.log(`[scheduler] policy "${policy.name}" completed (${connections.length} connections, ${totalInstances} instances, ${totalDnsRecords} DNS records, ${totalCostRows} cost rows)`);
+    log.info({ policy: policy.name, connections: connections.length, instances: totalInstances, dns: totalDnsRecords, cost: totalCostRows }, 'policy completed');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const failures = (policy.failure_count as number) + 1;
@@ -186,17 +188,12 @@ async function runPolicy(policy: Record<string, unknown>): Promise<void> {
       finished_at: now,
     });
 
-    console.error(`[scheduler] policy "${policy.name}" failed (backoff ${backoffMinutes} min):`, message);
+    log.error({ policy: policy.name, backoffMinutes, err: message }, 'policy failed');
   }
 }
 
 function nextRunAt(intervalMinutes: number, extraMs = 0): Date {
   return new Date(Date.now() + intervalMinutes * 60_000 + extraMs);
-}
-
-async function getPreferredCurrency(): Promise<string> {
-  const row = await db('app_settings').where({ key: 'preferred_currency' }).first().catch(() => null);
-  return row?.value ?? 'USD';
 }
 
 async function getTargetConnections(policy: Record<string, unknown>): Promise<Record<string, unknown>[]> {
@@ -212,214 +209,4 @@ async function getTargetConnections(policy: Record<string, unknown>): Promise<Re
   q.where({ user_id: policy.user_id });
 
   return q.select('*');
-}
-
-async function syncInstances(conn: Record<string, unknown>, preferredCurrency: string): Promise<number> {
-  const credentials = JSON.parse(decrypt(conn.credentials_enc as string)) as Record<string, unknown>;
-  let count = 0;
-
-  if (conn.provider === 'gcp') {
-    let priceCache: Map<string, number> | undefined;
-    let sourceCurrency = 'USD';
-    try {
-      if (await isCacheStale(db)) {
-        const result = await refreshBillingCache(credentials, db);
-        sourceCurrency = result.currency;
-        // Persist detected currency so we can use it when cache is fresh
-        await db('app_settings')
-          .insert({ key: 'billing_price_currency', value: sourceCurrency })
-          .onConflict('key').merge(['value']);
-      } else {
-        const row = await db('app_settings').where({ key: 'billing_price_currency' }).first().catch(() => null);
-        sourceCurrency = row?.value ?? 'USD';
-      }
-      priceCache = await loadPriceCache(db);
-    } catch { /* non-fatal */ }
-
-    const rate = await getRate(sourceCurrency, preferredCurrency);
-
-    const savedProjects = await db('projects_or_accounts')
-      .where({ connection_id: conn.id })
-      .select('id', 'external_id');
-
-    const projects = savedProjects.length
-      ? savedProjects.map((p: { id: string; external_id: string }) => ({ id: p.id, externalId: p.external_id }))
-      : [{ id: null, externalId: (credentials.project_id as string) || conn.name }];
-
-    for (const project of projects) {
-      try {
-        const instances = await listGcpInstances(project.externalId as string, credentials, priceCache);
-        for (const inst of instances) {
-          await upsertInstanceRow({
-            ...inst,
-            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-            provider: 'gcp',
-            connectionId: conn.id as string,
-            projectId: project.id as string | null,
-          });
-          count++;
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[scheduler] GCP project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-      }
-    }
-    // Cloud SQL (non-fatal if API not enabled)
-    for (const project of projects) {
-      try {
-        const sqlInstances = await listCloudSqlInstances(project.externalId as string, credentials);
-        for (const inst of sqlInstances) {
-          await upsertInstanceRow({
-            ...inst,
-            estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-            estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-            provider: 'gcp',
-            resourceType: 'cloudsql',
-            connectionId: conn.id as string,
-            projectId: project.id as string | null,
-          });
-          count++;
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[scheduler] Cloud SQL project ${project.externalId} skipped: ${msg.split('\n')[0]}`);
-      }
-    }
-  } else if (conn.provider === 'hetzner') {
-    const rate = await getRate('EUR', preferredCurrency);
-    const servers = await listHetznerServers(credentials.token as string);
-    for (const inst of servers) {
-      await upsertInstanceRow({
-        ...inst,
-        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-        provider: 'hetzner',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  } else if (conn.provider === 'aws') {
-    const rate = await getRate('USD', preferredCurrency);
-    const instances = await listAwsInstances(credentials);
-    for (const inst of instances) {
-      await upsertInstanceRow({
-        ...inst,
-        estimatedHourlyCost: convert(inst.estimatedHourlyCost, rate),
-        estimatedMonthlyCost: convert(inst.estimatedMonthlyCost, rate),
-        provider: 'aws',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  } else if (conn.provider === 'coolify') {
-    const apps = await listCoolifyApps(credentials.base_url as string, credentials.api_token as string);
-    for (const inst of apps) {
-      await upsertInstanceRow({
-        ...inst,
-        provider: 'coolify',
-        resourceType: 'app',
-        connectionId: conn.id as string,
-        projectId: null,
-      });
-      count++;
-    }
-  }
-
-  await db('cloud_connections').where({ id: conn.id }).update({
-    status: 'active',
-    last_sync_at: new Date(),
-    last_error: null,
-  });
-
-  return count;
-}
-
-async function upsertInstanceRow(inst: {
-  provider: string; resourceType?: string; connectionId: string; projectId: string | null;
-  instanceId: string; name: string; status: string; region: string; zone: string;
-  privateIp: string | null; publicIp: string | null; machineType: string;
-  launchedAt: Date | null; estimatedHourlyCost: number; estimatedMonthlyCost: number;
-  rawPayload: Record<string, unknown>;
-}) {
-  await db('instances')
-    .insert({
-      provider: inst.provider,
-      resource_type: inst.resourceType ?? 'compute',
-      connection_id: inst.connectionId,
-      project_or_account_id: inst.projectId,
-      instance_id: inst.instanceId,
-      name: inst.name,
-      status: inst.status,
-      region: inst.region,
-      zone: inst.zone,
-      private_ip: inst.privateIp,
-      public_ip: inst.publicIp,
-      instance_type: inst.machineType,
-      launched_at: inst.launchedAt,
-      last_seen_at: new Date(),
-      estimated_hourly_cost: inst.estimatedHourlyCost,
-      estimated_monthly_cost: inst.estimatedMonthlyCost,
-      raw_payload: JSON.stringify(inst.rawPayload),
-    })
-    .onConflict(['connection_id', 'instance_id'])
-    .merge([
-      'name', 'status', 'region', 'zone',
-      'private_ip', 'public_ip', 'instance_type',
-      'launched_at', 'last_seen_at',
-      'estimated_hourly_cost', 'estimated_monthly_cost',
-      'project_or_account_id', 'resource_type', 'raw_payload', 'updated_at',
-    ]);
-}
-
-async function syncDns(conn: Record<string, unknown>): Promise<number> {
-  // Find dns_connections belonging to same user
-  const dnsConns = await db('dns_connections').where({ user_id: conn.user_id }).select('*');
-  let count = 0;
-
-  for (const dnsConn of dnsConns) {
-    try {
-      const credentials = JSON.parse(decrypt(dnsConn.credentials_enc as string)) as { token: string };
-
-      if (dnsConn.provider === 'cloudflare') {
-        const zones = await listCloudflareZones(credentials.token);
-        for (const zone of zones) {
-          const records = await listCloudflareRecords(credentials.token, zone.id);
-          for (const rec of records) {
-            await db('dns_records')
-              .insert({
-                dns_connection_id: dnsConn.id,
-                zone: zone.name,
-                zone_id: zone.id,
-                record_id: rec.id,
-                name: rec.name,
-                type: rec.type,
-                value: rec.content,
-                ttl: rec.ttl,
-                proxied: rec.proxied,
-                last_seen_at: new Date(),
-              })
-              .onConflict(['dns_connection_id', 'record_id'])
-              .merge(['name', 'type', 'value', 'ttl', 'proxied', 'last_seen_at', 'updated_at']);
-            count++;
-          }
-        }
-        await db('dns_connections').where({ id: dnsConn.id }).update({
-          status: 'active',
-          last_sync_at: new Date(),
-          last_error: null,
-        });
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      await db('dns_connections').where({ id: dnsConn.id }).update({
-        status: 'error',
-        last_error: message,
-      });
-    }
-  }
-
-  return count;
 }

@@ -4,18 +4,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Instance, Connection, CostSummary, CostByProject, BillingActual } from '@/lib/api';
 import { getUser } from '@/lib/auth';
+import { calcCostToDate, fmtUptime } from '@/lib/cost';
 import styles from './page.module.css';
 
 function fmtUsd(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fmtMonthly(n: number): string { return `${fmtUsd(n)}/mo`; }
-
-function fmtUptime(hours: number | null): string {
-  if (hours === null) return '—';
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-}
 
 function currentPeriod(): string {
   const d = new Date();
@@ -28,6 +23,7 @@ export default function DashboardPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [billingActuals, setBillingActuals] = useState<BillingActual[]>([]);
+  const [loadError, setLoadError] = useState('');
 
   const isViewer = getUser()?.role === 'viewer';
 
@@ -36,28 +32,20 @@ export default function DashboardPage() {
   }, [isViewer, router]);
 
   useEffect(() => {
-    api.getInstances().then(setInstances).catch(() => {});
+    const onError = (err: unknown) => {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+    };
+    api.getInstances().then(setInstances).catch(onError);
     if (!isViewer) {
-      api.getConnections().then(setConnections).catch(() => {});
-      api.getCostSummary().then(setCostSummary).catch(() => {});
+      api.getConnections().then(setConnections).catch(onError);
+      api.getCostSummary().then(setCostSummary).catch(onError);
+      // Billing actuals are optional — a provider without billing data is not an error
       api.getBillingActuals(currentPeriod()).then(setBillingActuals).catch(() => {});
     }
   }, [isViewer]);
 
   // ── Estimated costs ──────────────────────────────────────────────────────
-  const now = Date.now();
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-
-  function costToDate(i: Instance): number {
-    if (i.status !== 'RUNNING' || !i.estimated_hourly_cost) return 0;
-    const hourly = parseFloat(i.estimated_hourly_cost);
-    const start = i.launched_at
-      ? Math.max(new Date(i.launched_at).getTime(), startOfMonth.getTime())
-      : startOfMonth.getTime();
-    return hourly * ((now - start) / 3_600_000);
-  }
+  const costToDate = (i: Instance) => calcCostToDate(i);
 
   const estMonthly = instances.reduce(
     (s, i) => s + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0), 0,
@@ -110,6 +98,8 @@ export default function DashboardPage() {
     <div>
       <h1 className={styles.heading}>Dashboard</h1>
       <p className={styles.sub}>Multi-cloud infrastructure overview</p>
+
+      {loadError && <p className="error-msg">Failed to load some dashboard data: {loadError}</p>}
 
       {/* ── Row 1: fleet overview ── */}
       <div className={styles.cards}>

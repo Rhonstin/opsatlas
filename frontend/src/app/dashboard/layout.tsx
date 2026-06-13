@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { isLoggedIn, getUser, clearAuth, AuthUser } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { ToastProvider } from '@/lib/toast';
 import styles from './layout.module.css';
 
@@ -19,6 +20,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   function logout() {
+    api.logout().catch(() => {/* best effort */});
     clearAuth();
     router.replace('/login');
   }

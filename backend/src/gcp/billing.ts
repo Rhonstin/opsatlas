@@ -6,7 +6,7 @@
  * Service: Compute Engine — 6F81-5844-456A
  */
 import { GoogleAuth } from 'google-auth-library';
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 const COMPUTE_SERVICE_ID = '6F81-5844-456A';
 const BILLING_API = `https://cloudbilling.googleapis.com/v1/services/${COMPUTE_SERVICE_ID}/skus`;

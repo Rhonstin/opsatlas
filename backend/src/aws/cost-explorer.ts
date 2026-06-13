@@ -30,6 +30,7 @@ export async function fetchAwsCostActuals(
 ): Promise<BillingActualRow[]> {
   const accessKeyId = credentials.access_key_id as string;
   const secretAccessKey = credentials.secret_access_key as string;
+  const sessionToken = credentials.session_token as string | undefined;
 
   if (!accessKeyId || !secretAccessKey) {
     throw new Error('AWS credentials must include access_key_id and secret_access_key');
@@ -37,7 +38,11 @@ export async function fetchAwsCostActuals(
 
   const client = new CostExplorerClient({
     region: 'us-east-1', // Cost Explorer is global, always us-east-1
-    credentials: { accessKeyId, secretAccessKey },
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+      ...(sessionToken ? { sessionToken } : {}), // support temporary STS/SSO credentials
+    },
   });
 
   // Build date range for the month

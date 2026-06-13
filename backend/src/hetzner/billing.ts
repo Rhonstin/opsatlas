@@ -10,7 +10,7 @@
  *
  * Amounts are in EUR; currency field is set to 'EUR'.
  */
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface HetznerBillingRow {
   project_id: null;
@@ -91,7 +91,7 @@ function net(entry: PriceEntry): number {
 }
 
 async function hetznerGet<T>(token: string, path: string): Promise<T> {
-  const res = await fetchWithTimeout(`https://api.hetzner.cloud/v1${path}`, {
+  const res = await fetchWithRetry(`https://api.hetzner.cloud/v1${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -179,16 +179,20 @@ export async function fetchHetznerBillingActuals(
   }
 
   // Primary IPs — only unassigned ones are billed separately
-  // (assigned to running server = included in server price)
-  const pip4Entry = p.primary_ips?.find((e) => e.type === 'ipv4');
-  const pip4Hourly = pip4Entry?.prices?.[0]
-    ? net(pip4Entry.prices[0].price_hourly)
-    : 0;
+  // (assigned to running server = included in server price).
+  // Price depends on the IP type (ipv4 / ipv6) and location.
+  const primaryIpHourly = (type: string, location: string): number => {
+    const entry = p.primary_ips?.find((e) => e.type === type);
+    if (!entry?.prices?.length) return 0;
+    const byLoc = entry.prices.find((pr) => pr.location === location) ?? entry.prices[0];
+    return net(byLoc.price_hourly);
+  };
   for (const pip of primaryIps) {
     if (pip.assignee_id !== null) continue; // assigned = free
     if (new Date(pip.created).getTime() >= pEndMs) continue;
     const hours = hoursInPeriod(pip.created, pStartMs, pEndMs);
-    add('Primary IP', pip4Hourly * hours);
+    const location = pip.datacenter?.location?.name ?? '';
+    add('Primary IP', primaryIpHourly(pip.type, location) * hours);
   }
 
   // Load Balancers — price embedded per-LB, matched by location

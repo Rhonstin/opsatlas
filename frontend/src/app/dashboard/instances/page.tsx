@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { api, Instance } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import { useSort } from '@/lib/useSort';
+import { calcCostToDate, isLongRunning, isIdle, fmtUptime } from '@/lib/cost';
 import InstanceDrawer from './InstanceDrawer';
 import styles from './instances.module.css';
 
@@ -17,8 +18,6 @@ const STATUS_BADGE: Record<string, string> = {
   SUSPENDED: 'badge-pending',
   STAGING: 'badge-pending',
 };
-
-const LONG_RUNNING_HOURS = 30 * 24; // 30 days
 
 function statusClass(s: string): string {
   return STATUS_BADGE[s.toUpperCase()] ?? 'badge-pending';
@@ -43,36 +42,7 @@ function fmtMonthly(n: string | null, currency = 'USD'): string {
   return `${currencySymbol(currency)}${parseFloat(n).toFixed(2)}/mo`;
 }
 
-function fmtUptime(hours: number | null): string {
-  if (hours === null) return '—';
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-}
-
-function isLongRunning(inst: Instance): boolean {
-  return inst.status === 'RUNNING' && inst.uptime_hours !== null && inst.uptime_hours > LONG_RUNNING_HOURS;
-}
-
-function isIdle(inst: Instance): boolean {
-  return inst.status === 'STOPPED' || inst.status === 'TERMINATED';
-}
-
-/** Cost accrued from the start of the current month until now (RUNNING only). */
-function calcCostToDate(inst: Instance): number {
-  if (inst.status !== 'RUNNING' || !inst.estimated_hourly_cost) return 0;
-  const hourly = parseFloat(inst.estimated_hourly_cost);
-  const now = Date.now();
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-  const instanceStart = inst.launched_at
-    ? Math.max(new Date(inst.launched_at).getTime(), startOfMonth.getTime())
-    : startOfMonth.getTime();
-  return hourly * ((now - instanceStart) / 3_600_000);
-}
-
-
-type SortKey = 'name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
+type SortKey ='name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
 type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'coolify';
 
 function InstancesPageInner() {

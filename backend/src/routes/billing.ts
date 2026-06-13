@@ -1,9 +1,15 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { refreshBillingForUser, currentPeriod } from '../lib/billing-refresh';
+import { getRate, convert } from '../lib/exchange-rates';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = Router();
+
+async function preferredCurrency(): Promise<string> {
+  const row = await db('app_settings').where({ key: 'preferred_currency' }).first().catch(() => null);
+  return row?.value ?? 'USD';
+}
 
 /** GET /billing/actuals?period=YYYY-MM */
 router.get('/actuals', requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -24,11 +30,35 @@ router.get('/actuals', requireAdmin, async (req: AuthRequest, res: Response) => 
       'billing_actuals.service',
       'billing_actuals.amount_usd',
       'billing_actuals.currency',
+      'billing_actuals.source_amount',
+      'billing_actuals.source_currency',
       'billing_actuals.fetched_at',
-    )
-    .orderBy('billing_actuals.amount_usd', 'desc');
+    );
 
-  res.json(rows);
+  // Convert from the raw source amount to the user's CURRENT preferred currency,
+  // so changing the display currency reflects immediately without a re-fetch.
+  const display = await preferredCurrency();
+  const rateCache = new Map<string, number>();
+  const getCachedRate = async (from: string): Promise<number> => {
+    if (!rateCache.has(from)) rateCache.set(from, await getRate(from, display));
+    return rateCache.get(from)!;
+  };
+
+  const converted = await Promise.all(
+    rows.map(async (r) => {
+      const src = r.source_amount != null ? parseFloat(r.source_amount) : parseFloat(r.amount_usd);
+      const srcCurrency = r.source_currency ?? r.currency ?? 'USD';
+      const rate = await getCachedRate(srcCurrency);
+      return {
+        ...r,
+        amount_usd: String(convert(src, rate)), // amount in `currency` (display), name kept for API stability
+        currency: display,
+      };
+    }),
+  );
+
+  converted.sort((a, b) => parseFloat(b.amount_usd) - parseFloat(a.amount_usd));
+  res.json(converted);
 });
 
 /** GET /billing/periods — list months for which we have data */

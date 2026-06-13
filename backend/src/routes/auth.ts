@@ -7,6 +7,9 @@ import qrcode from 'qrcode';
 import db from '../db';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import { fetchWithTimeout } from '../lib/http';
+import { logger } from '../lib/logger';
+
+const log = logger.child({ module: 'routes/auth' });
 
 // OAuth exchanges block the login flow — keep the timeout short
 const OAUTH_TIMEOUT_MS = 15_000;
@@ -20,6 +23,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts, try again later' },
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 /** GET /auth/config — public endpoint, returns server feature flags */
@@ -79,7 +83,8 @@ router.post('/register', authLimiter, async (req: Request, res: Response) => {
   const [user] = await db('users').insert({ email, password_hash, role: 'admin' }).returning(['id', 'email', 'role']);
 
   const token = issueToken(user.id, 'admin');
-  res.status(201).json({ token, user: { id: user.id, email: user.email, role: 'admin' } });
+  res.status(201);
+  setSessionCookie(res, token, { id: user.id, email: user.email, role: 'admin' });
 });
 
 router.post('/login', authLimiter, async (req: Request, res: Response) => {
@@ -115,7 +120,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
   }
 
   const token = issueToken(user.id, user.role ?? 'admin');
-  res.json({ token, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
+  setSessionCookie(res, token, { id: user.id, email: user.email, role: user.role ?? 'admin' });
 });
 
 // ── MFA routes ────────────────────────────────────────────────────────────────
@@ -161,7 +166,7 @@ router.post('/mfa/confirm', authLimiter, async (req: Request, res: Response) => 
   }
 
   const token = issueToken(user.id, user.role ?? 'admin');
-  res.json({ token, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
+  setSessionCookie(res, token, { id: user.id, email: user.email, role: user.role ?? 'admin' });
 });
 
 /**
@@ -414,10 +419,10 @@ router.post('/google/callback', async (req: Request, res: Response) => {
     }
 
     const jwtToken = issueToken(user.id, user.role ?? 'viewer');
-    res.json({ token: jwtToken, user: { id: user.id, email: user.email, role: user.role ?? 'viewer' } });
+    setSessionCookie(res, jwtToken, { id: user.id, email: user.email, role: user.role ?? 'viewer' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'SSO error';
-    console.error('[google callback]', msg);
+    log.error({ err: msg }, 'google callback failed');
     res.status(500).json({ error: 'Authentication failed' });
   }
 });
@@ -475,6 +480,12 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
   const user = await db('users').where({ id: req.userId }).select('id', 'email', 'role').first();
   if (!user) { res.status(404).json({ error: 'User not found' }); return; }
   res.json({ id: user.id, email: user.email, role: user.role ?? 'admin' });
+});
+
+/** POST /auth/logout — clear the session cookie. */
+router.post('/logout', (_req: Request, res: Response) => {
+  res.clearCookie('opsatlas_token', { path: '/' });
+  res.json({ ok: true });
 });
 
 /** GET /auth/sso-config — returns current DB config (secret masked). Requires admin. */
@@ -604,10 +615,10 @@ router.post('/authentik/callback', async (req: Request, res: Response) => {
     }
 
     const jwtToken = issueToken(user.id, user.role ?? 'admin');
-    res.json({ token: jwtToken, user: { id: user.id, email: user.email, role: user.role ?? 'admin' } });
+    setSessionCookie(res, jwtToken, { id: user.id, email: user.email, role: user.role ?? 'admin' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'SSO error';
-    console.error('[authentik callback]', msg);
+    log.error({ err: msg }, 'authentik callback failed');
     res.status(500).json({ error: 'Authentication failed' });
   }
 });
@@ -625,6 +636,20 @@ function issueMfaToken(userId: string): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET not set');
   return jwt.sign({ userId, mfa: true }, secret, { expiresIn: '5m' });
+}
+
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: 7 * 24 * 3600 * 1000,
+  path: '/',
+};
+
+/** Set the session cookie AND return the token in the response body. */
+function setSessionCookie(res: Response, token: string, user: { id: string; email: string; role: string }) {
+  res.cookie('opsatlas_token', token, COOKIE_OPTS);
+  res.json({ token, user });
 }
 
 export default router;

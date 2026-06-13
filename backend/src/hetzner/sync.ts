@@ -4,7 +4,7 @@
  * Auth: Bearer API token.
  */
 
-import { fetchWithTimeout } from '../lib/http';
+import { fetchWithRetry } from '../lib/http';
 
 export interface HetznerInstance {
   instanceId: string;
@@ -66,7 +66,7 @@ export async function listHetznerServers(
   let page = 1;
 
   while (true) {
-    const res = await fetchWithTimeout(
+    const res = await fetchWithRetry(
       `https://api.hetzner.cloud/v1/servers?page=${page}&per_page=50`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
@@ -115,7 +115,7 @@ export async function listHetznerServers(
 }
 
 export async function testHetznerCredentials(token: string): Promise<void> {
-  const res = await fetchWithTimeout('https://api.hetzner.cloud/v1/servers?per_page=1', {
+  const res = await fetchWithRetry('https://api.hetzner.cloud/v1/servers?per_page=1', {
     headers: { Authorization: `Bearer ${token}` },
   });
 

@@ -24,6 +24,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   let query = db('instances')
     .join('cloud_connections', 'instances.connection_id', 'cloud_connections.id')
     .leftJoin('projects_or_accounts', 'instances.project_or_account_id', 'projects_or_accounts.id')
+    .leftJoin('favorite_instances', (j) => {
+      j.on('favorite_instances.instance_id', '=', 'instances.id')
+        .andOn('favorite_instances.user_id', '=', db.raw('?', [req.userId ?? '']));
+    })
     .whereIn('cloud_connections.user_id', scopeIds)
     .select(
       'instances.id',
@@ -47,6 +51,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       'instances.created_at',
       'projects_or_accounts.name as project_name',
       'projects_or_accounts.external_id as project_external_id',
+      db.raw('favorite_instances.id is not null as is_favorite'),
     )
     .orderBy('instances.name');
 
@@ -54,12 +59,41 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   if (status) query = query.where('instances.status', status as string);
   if (connection_id) query = query.where('instances.connection_id', connection_id as string);
   if (resource_type) query = query.where('instances.resource_type', resource_type as string);
+  if (req.query.favorite === 'true') query = query.whereNotNull('favorite_instances.id');
+
+  // Tags filter: ?tags=tag1,tag2 — instances that have ANY of these tags
+  const tagNames = req.query.tags ? (req.query.tags as string).split(',').map((t) => t.trim()).filter(Boolean) : [];
+  if (tagNames.length > 0) {
+    query = query.whereIn('instances.id', (sub) => {
+      sub.select('instance_tags.instance_id')
+        .from('instance_tags')
+        .join('tags', 'instance_tags.tag_id', 'tags.id')
+        .where('tags.user_id', req.userId!)
+        .whereIn('tags.name', tagNames);
+    });
+  }
 
   const rows = await query;
+
+  // Fetch tags for all returned instances in one query
+  const instanceIds = rows.map((r) => r.id);
+  const allInstanceTags = instanceIds.length > 0
+    ? await db('instance_tags')
+        .join('tags', 'instance_tags.tag_id', 'tags.id')
+        .whereIn('instance_tags.instance_id', instanceIds)
+        .select('instance_tags.instance_id', 'tags.id', 'tags.name', 'tags.color')
+    : [];
+  const tagsByInstance = new Map<string, Array<{ id: string; name: string; color: string }>>();
+  for (const t of allInstanceTags) {
+    const list = tagsByInstance.get(t.instance_id) ?? [];
+    list.push({ id: t.id, name: t.name, color: t.color });
+    tagsByInstance.set(t.instance_id, list);
+  }
 
   const now = Date.now();
   let withUptime = rows.map((r) => ({
     ...r,
+    tags: tagsByInstance.get(r.id) ?? [],
     uptime_hours: r.launched_at
       ? Math.floor((now - new Date(r.launched_at).getTime()) / 3_600_000)
       : null,

@@ -7,13 +7,16 @@ export interface AuthRequest extends Request {
 }
 
 export function authenticateToken(req: AuthRequest, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
+  // Read from httpOnly cookie first, fall back to Authorization header (for CLI/tests)
+  const cookies = (req as unknown as { cookies?: Record<string, string> }).cookies;
+  const token = cookies?.opsatlas_token
+    ?? req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
     res.status(401).json({ error: 'Missing token' });
     return;
   }
 
-  const token = header.slice(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     res.status(500).json({ error: 'Server misconfiguration' });
