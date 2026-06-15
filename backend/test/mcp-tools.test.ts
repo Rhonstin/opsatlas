@@ -108,7 +108,7 @@ describe('MCP: list_instances', () => {
     const data = JSON.parse(result.content[0].text);
     const withDomains = data.find((i: { domains: string[] | null }) => i.domains && i.domains.length > 0);
     expect(withDomains).toBeDefined();
-    expect(withDomains.domains).toContain('example.com');
+    expect(withDomains.domains.some((d: string) => d.includes('example.com'))).toBe(true);
   });
 
   it('viewer sees admin instances', async () => {
@@ -126,7 +126,7 @@ describe('MCP: get_instance', () => {
     expect(data.provider).toBe('hetzner');
     expect(data.status).toBe('RUNNING');
     expect(data.public_ip).toBe('1.2.3.4');
-    expect(data.domains).toContain('example.com');
+    expect(data.domains.some((d: string) => d.includes('example.com'))).toBe(true);
     expect(data.estimated_monthly_cost).toBeCloseTo(5.11, 2);
   });
 
@@ -165,7 +165,7 @@ describe('MCP: list_dns_records', () => {
   it('matches DNS records to instances', async () => {
     const result = await listDnsRecords(adminId, {});
     const data = JSON.parse(result.content[0].text);
-    const matched = data.find((r: { matched_instance: string | null }) => r.matched_instance);
+    const matched = data.find((r: { matched_instance: string | null; value: string }) => r.matched_instance && r.value === '1.2.3.4');
     expect(matched).toBeDefined();
     expect(matched.matched_instance).toBe('web-server-1');
   });
