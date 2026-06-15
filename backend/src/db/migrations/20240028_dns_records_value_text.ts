@@ -1,15 +1,11 @@
 import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
-  await knex.schema.alterTable('dns_records', (t) => {
-    t.text('value').notNullable().alter();
-    t.text('name').notNullable().alter();
-  });
+  await knex.raw('ALTER TABLE dns_records ALTER COLUMN value TYPE TEXT');
+  await knex.raw('ALTER TABLE dns_records ALTER COLUMN name TYPE TEXT');
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.alterTable('dns_records', (t) => {
-    t.string('value', 255).notNullable().alter();
-    t.string('name', 255).notNullable().alter();
-  });
+  await knex.raw('ALTER TABLE dns_records ALTER COLUMN value TYPE VARCHAR(255)');
+  await knex.raw('ALTER TABLE dns_records ALTER COLUMN name TYPE VARCHAR(255)');
 }
