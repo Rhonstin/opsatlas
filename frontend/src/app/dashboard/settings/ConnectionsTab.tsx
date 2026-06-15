@@ -171,7 +171,7 @@ export default function ConnectionsTab() {
                       {projectStatus[conn.id]?.errored > 0 && (
                         <button
                           className={connStyles.projectsBtn}
-                          style={{ color: 'var(--error-color, #e53e3e)', marginLeft: 4, fontSize: 11 }}
+                          style={{ color: 'var(--danger)', marginLeft: 4, fontSize: 11 }}
                           onClick={() => setExpandedProjects((prev) => ({ ...prev, [conn.id]: !prev[conn.id] }))}
                           title={projectStatus[conn.id]?.errors.join('\n')}
                         >
@@ -179,7 +179,7 @@ export default function ConnectionsTab() {
                         </button>
                       )}
                       {expandedProjects[conn.id] && projectStatus[conn.id]?.errors.length > 0 && (
-                        <div style={{ fontSize: 11, color: 'var(--error-color, #e53e3e)', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>
                           {projectStatus[conn.id].errors.map((e, i) => (
                             <div key={i} title={e}>• {e.split(':')[0]}</div>
                           ))}

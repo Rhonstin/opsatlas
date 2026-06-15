@@ -94,7 +94,7 @@
   max-width: 560px;
 }
 
-.warning { color: #f59e0b; }
+.warning { color: var(--warning); }
 
 /* ── SSO ───────────────────────────────────────────────────────── */
 
@@ -192,7 +192,7 @@
   border: 1px solid rgba(239, 68, 68, 0.25);
   border-radius: 8px;
   font-size: 13px;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .resultBox {
@@ -209,7 +209,7 @@
   margin-bottom: 12px;
 }
 
-.created { color: #22c55e; }
+.created { color: var(--success); }
 .skipped { color: var(--muted); }
 
 .resultList {
@@ -231,7 +231,7 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dotCreated { background: #22c55e; }
+.dotCreated { background: var(--success); }
 .dotSkipped { background: var(--muted); }
 
 .resultType {
@@ -292,7 +292,6 @@
 }
 
 .ssoInput:focus {
-  outline: none;
   border-color: var(--accent);
 }
 
@@ -366,7 +365,7 @@
   box-sizing: border-box;
   transition: border-color 0.15s;
 }
-.pwInput:focus { outline: none; border-color: var(--accent); }
+.pwInput:focus { border-color: var(--accent); }
 
 .pwActions {
   display: flex;
@@ -377,7 +376,7 @@
 
 .pwError {
   font-size: 12px;
-  color: var(--error, #ef4444);
+  color: var(--danger);
   margin-top: -8px;
 }
 
@@ -387,7 +386,7 @@
   gap: 5px;
   font-size: 11px;
   font-weight: 600;
-  color: #22c55e;
+  color: var(--success);
   background: rgba(34, 197, 94, 0.1);
   border-radius: 4px;
   padding: 2px 8px;

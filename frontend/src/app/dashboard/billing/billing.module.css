@@ -43,7 +43,7 @@
 .tab:hover { color: var(--text); }
 .tabActive {
   color: var(--text);
-  border-bottom-color: var(--accent, #4f8ef7);
+  border-bottom-color: var(--accent);
 }
 
 .tabBadge {
@@ -189,7 +189,7 @@
 /* Bar chart */
 .bar {
   height: 4px;
-  background: var(--accent, #4f8ef7);
+  background: var(--accent);
   border-radius: 2px;
   opacity: 0.6;
   margin-top: 5px;
@@ -252,9 +252,9 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dotOk      { background: #22c55e; }
+.dotOk      { background: var(--success); }
 .dotSkipped { background: var(--muted); }
-.dotError   { background: var(--error, #ef4444); }
+.dotError   { background: var(--danger); }
 
 .resultMsg { color: var(--muted); font-size: 12px; }
 

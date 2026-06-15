@@ -131,7 +131,7 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span className={pStyles.itemName}>{p.name}</span>
                           {syncInfo?.last_error && (
-                            <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600 }}>Sync error</span>
+                            <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>Sync error</span>
                           )}
                           {syncInfo?.last_sync_at && !syncInfo.last_error && (
                             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -141,7 +141,7 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
                         </div>
                         {p.name !== p.projectId && <span className={pStyles.itemId}>{p.projectId}</span>}
                         {syncInfo?.last_error && (
-                          <span className={pStyles.itemId} style={{ color: '#ef4444' }}>{syncInfo.last_error}</span>
+                          <span className={pStyles.itemId} style={{ color: 'var(--danger)' }}>{syncInfo.last_error}</span>
                         )}
                       </div>
                     </label>

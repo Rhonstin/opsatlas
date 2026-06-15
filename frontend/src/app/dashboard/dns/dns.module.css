@@ -51,7 +51,7 @@
 .row:hover { background: rgba(255,255,255,0.04); }
 
 .connName { font-weight: 500; }
-.connError { color: var(--error, #ef4444); font-size: 11px; margin-top: 2px; }
+.connError { color: var(--danger); font-size: 11px; margin-top: 2px; }
 .provider { color: var(--muted); font-size: 12px; font-weight: 600; }
 .muted { color: var(--muted); font-size: 12px; }
 
@@ -117,10 +117,9 @@
   color: var(--text);
   width: 100%;
   box-sizing: border-box;
-  outline: none;
   transition: border-color 0.15s;
 }
-.input:focus { border-color: var(--accent, #4f8ef7); }
+.input:focus { border-color: var(--accent); }
 
 .providerFixed {
   background: var(--bg);

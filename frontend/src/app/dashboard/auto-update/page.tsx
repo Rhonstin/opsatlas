@@ -220,7 +220,7 @@ function PolicyCard({
           {policy.failure_count > 0 && (
             <>
               <span>·</span>
-              <span style={{ color: 'var(--error, #ef4444)' }}>{policy.failure_count} failure{policy.failure_count !== 1 ? 's' : ''}</span>
+              <span style={{ color: 'var(--danger)' }}>{policy.failure_count} failure{policy.failure_count !== 1 ? 's' : ''}</span>
             </>
           )}
         </div>
@@ -236,7 +236,7 @@ function PolicyCard({
             </span>
           )}
           {policy.last_status === 'error' && policy.last_error
-            ? <span style={{ color: 'var(--error, #ef4444)' }}>{policy.last_error}</span>
+            ? <span style={{ color: 'var(--danger)' }}>{policy.last_error}</span>
             : <span>{fmtDate(policy.last_run_at)}</span>
           }
           {policy.next_run_at && policy.enabled && (
@@ -271,7 +271,7 @@ function PolicyCard({
         </button>
         <button
           className="btn-ghost"
-          style={{ fontSize: 12, padding: '3px 10px', color: 'var(--error, #ef4444)' }}
+          style={{ fontSize: 12, padding: '3px 10px', color: 'var(--danger)' }}
           onClick={remove}
         >
           Delete
@@ -324,7 +324,7 @@ export default function AutoUpdatePage() {
       </div>
 
       {loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)', fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
 
       {showForm && (
         <div style={{ marginBottom: 16 }}>

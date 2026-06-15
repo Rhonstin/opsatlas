@@ -116,8 +116,8 @@
 
 .viewTabActive {
   background: var(--surface);
-  border-color: var(--accent, #4f8ef7);
-  color: var(--accent, #4f8ef7);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Long-running row highlight */
@@ -165,7 +165,7 @@
 
 .proxiedDot {
   font-size: 8px;
-  color: #f59e0b;
+  color: var(--warning);
   opacity: 0.7;
   font-family: sans-serif;
   margin-left: 1px;
@@ -182,7 +182,7 @@
   margin-top: 4px;
   padding: 1px 6px;
   background: rgba(251, 191, 36, 0.15);
-  color: #f59e0b;
+  color: var(--warning);
   border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
@@ -335,7 +335,7 @@
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 12px;
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .drawerDivider {

@@ -29,7 +29,7 @@
 .tab:hover { color: var(--text); }
 .tabActive {
   color: var(--text);
-  border-bottom-color: var(--accent, #4f8ef7);
+  border-bottom-color: var(--accent);
 }
 
 /* Zone filter pills */
@@ -52,8 +52,8 @@
 }
 .pill:hover { color: var(--text); }
 .pillActive {
-  background: var(--accent, #4f8ef7);
-  border-color: var(--accent, #4f8ef7);
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
@@ -132,14 +132,14 @@
 
 .proxied {
   font-size: 11px;
-  color: #f59e0b;
+  color: var(--warning);
   font-weight: 600;
 }
 
 .instanceLink {
   font-size: 12px;
   font-weight: 500;
-  color: var(--accent, #4f8ef7);
+  color: var(--accent);
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;

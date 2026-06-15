@@ -60,7 +60,7 @@ function CallbackInner() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ maxWidth: 400, textAlign: 'center' }}>
-          <p style={{ color: 'var(--error, #ef4444)', marginBottom: 16 }}>{error}</p>
+          <p style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</p>
           <a href="/login" style={{ color: 'var(--accent)', fontSize: 14 }}>Back to login</a>
         </div>
       </div>

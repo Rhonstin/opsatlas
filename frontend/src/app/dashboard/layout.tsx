@@ -32,6 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider>
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <div className={styles.shell}>
         <nav className={styles.nav}>
           <Link href="/dashboard" className={styles.navLogo}>
@@ -100,7 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </nav>
-        <main className={styles.main}>{children}</main>
+        <main className={styles.main} id="main-content">{children}</main>
       </div>
     </ToastProvider>
   );

@@ -124,7 +124,7 @@ export default function SecurityTab() {
                 <img src={qrDataUrl} alt="TOTP QR code" style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>Or enter the key manually:</div>
-                  <code style={{ fontSize: 13, letterSpacing: '0.1em', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
+                  <code style={{ fontSize: 13, letterSpacing: '0.1em', padding: '6px 10px', background: 'var(--surface)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
                     {secret}
                   </code>
                 </div>

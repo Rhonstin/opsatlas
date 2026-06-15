@@ -168,14 +168,14 @@ function BillingContent() {
               <span><strong>{r.connection_name}</strong> ({r.provider.toUpperCase()})</span>
               {r.status === 'ok' && <span className={styles.resultMsg}>{r.rows_upserted} line items imported</span>}
               {r.status === 'skipped' && <span className={styles.resultMsg}>skipped — {r.message}</span>}
-              {r.status === 'error' && <span style={{ color: 'var(--error, #ef4444)', fontSize: 12 }}>{r.message}</span>}
+              {r.status === 'error' && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{r.message}</span>}
             </div>
           ))}
         </div>
       )}
 
       {loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)', fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
 
       {/* Hetzner — no actuals yet */}
       {!loading && providerTab === 'hetzner' && filteredActuals.length === 0 && (

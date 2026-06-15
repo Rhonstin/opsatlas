@@ -80,7 +80,7 @@
   background: rgba(34, 197, 94, 0.08);
   border: 1px solid rgba(34, 197, 94, 0.25);
   border-radius: 8px;
-  color: #22c55e;
+  color: var(--success);
 }
 
 .testError {
@@ -89,7 +89,7 @@
   background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.25);
   border-radius: 8px;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 /* ── Step 3: Project list ───────────────────────────────────────────────────── */

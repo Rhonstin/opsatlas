@@ -45,7 +45,7 @@ export default function DnsRecordsPage() {
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {!loading && records.length === 0 && (
         <p className={styles.empty}>No DNS records found. Sync a DNS connection first.</p>

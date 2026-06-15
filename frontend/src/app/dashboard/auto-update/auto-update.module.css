@@ -76,7 +76,7 @@
 .toggleOn {
   background: rgba(79, 142, 247, 0.12);
   border-color: rgba(79, 142, 247, 0.3);
-  color: var(--accent, #4f8ef7);
+  color: var(--accent);
 }
 
 .cardStatus {
@@ -84,9 +84,9 @@
   margin-top: 8px;
   color: var(--muted);
 }
-.statusSuccess { color: #22c55e; }
-.statusError { color: var(--error, #ef4444); }
-.statusRunning { color: #f59e0b; }
+.statusSuccess { color: var(--success); }
+.statusError { color: var(--danger); }
+.statusRunning { color: var(--warning); }
 
 .cardActions {
   display: flex;
@@ -123,7 +123,7 @@
   background: #fff;
   transition: transform 0.2s;
 }
-.switch input:checked + .switchTrack { background: var(--accent, #4f8ef7); }
+.switch input:checked + .switchTrack { background: var(--accent); }
 .switch input:checked + .switchTrack::after { transform: translateX(16px); }
 
 /* Add policy form */
@@ -185,7 +185,7 @@
   justify-content: flex-end;
 }
 
-.errorText { color: var(--error, #ef4444); font-size: 12px; }
+.errorText { color: var(--danger); font-size: 12px; }
 
 /* Run history */
 .runHistory {
@@ -210,10 +210,10 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.runDotSuccess { background: #22c55e; }
-.runDotError   { background: var(--error, #ef4444); }
-.runDotRunning { background: #f59e0b; }
+.runDotSuccess { background: var(--success); }
+.runDotError   { background: var(--danger); }
+.runDotRunning { background: var(--warning); }
 
 .runDate { color: var(--text); min-width: 120px; }
 .runMeta { color: var(--muted); }
-.runError { color: var(--error, #ef4444); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runError { color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

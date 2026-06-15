@@ -90,7 +90,7 @@ export default function InstanceDrawer({
         </div>
 
         <div className={styles.drawerBody}>
-          {error && <p style={{ color: 'var(--error, #ef4444)', fontSize: 13 }}>{error}</p>}
+          {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
 
           {!inst && !error && (
             <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
