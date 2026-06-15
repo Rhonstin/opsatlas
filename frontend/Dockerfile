@@ -1,6 +1,7 @@
 # ── Dependencies stage ────────────────────────────────────────
 FROM node:20-alpine AS deps
 WORKDIR /app
+ENV NO_UPDATE_NOTIFIER=true
 
 COPY package*.json ./
 RUN npm install
@@ -8,6 +9,7 @@ RUN npm install
 # ── Build stage ───────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
+ENV NO_UPDATE_NOTIFIER=true
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -22,6 +24,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NO_UPDATE_NOTIFIER=true
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser  --system --uid 1001 nextjs
