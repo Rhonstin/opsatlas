@@ -127,6 +127,7 @@ describe('MCP auth with API key', () => {
     const res = await request(app)
       .post('/mcp')
       .set('X-API-Key', rawKey)
+      .set('Accept', 'application/json, text/event-stream')
       .send({ jsonrpc: '2.0', method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }, id: 1 });
     expect(res.status).toBe(200);
   });
@@ -160,6 +161,7 @@ describe('MCP auth with API key', () => {
     const res = await request(app)
       .post('/mcp')
       .set('Authorization', `Bearer ${adminToken}`)
+      .set('Accept', 'application/json, text/event-stream')
       .send({ jsonrpc: '2.0', method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }, id: 1 });
     expect(res.status).toBe(200);
   });

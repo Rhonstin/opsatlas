@@ -19,7 +19,7 @@ import tagsRouter from './routes/tags';
 import configRouter from './routes/config';
 import apiKeysRouter from './routes/api-keys';
 import mcpRouter from './mcp/router';
-import { authenticateToken } from './middleware/auth';
+import { authenticateToken, requireAdmin } from './middleware/auth';
 import db from './db';
 
 export function buildApp(): express.Express {
@@ -55,7 +55,7 @@ export function buildApp(): express.Express {
   app.use('/favorites', authenticateToken, favoritesRouter);
   app.use('/tags', authenticateToken, tagsRouter);
   app.use('/config', authenticateToken, configRouter);
-  app.use('/auth/api-keys', authenticateToken, apiKeysRouter);
+  app.use('/auth/api-keys', authenticateToken, requireAdmin, apiKeysRouter);
 
   return app;
 }
