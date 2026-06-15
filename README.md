@@ -32,7 +32,7 @@
 | Layer | Tech |
 |---|---|
 | Frontend | Next.js 14 (App Router), TypeScript, CSS Modules |
-| Backend | Express, TypeScript, Node.js 20 |
+| Backend | Express, TypeScript, Node.js 24 |
 | Database | PostgreSQL 16 + Knex migrations |
 | Auth | JWT · bcrypt · Authentik OAuth2/OIDC |
 | Cloud clients | `@google-cloud/compute`, AWS SDK v3, Hetzner REST API |

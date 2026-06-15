@@ -24,7 +24,7 @@ Step-by-step instructions for deploying opsatlas and configuring each cloud prov
 | Tool | Version | Notes |
 |---|---|---|
 | Docker + Docker Compose | v24+ | For containerised deployment |
-| Node.js | 20+ | For local dev only |
+| Node.js | 24+ | For local dev only |
 | PostgreSQL | 16+ | Provided via Docker Compose |
 | `gcloud` CLI | latest | For GCP setup only |
 | `bq` CLI | latest | For billing export setup only |
