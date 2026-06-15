@@ -17,6 +17,7 @@ import billingRouter from './routes/billing';
 import favoritesRouter from './routes/favorites';
 import tagsRouter from './routes/tags';
 import configRouter from './routes/config';
+import apiKeysRouter from './routes/api-keys';
 import mcpRouter from './mcp/router';
 import { authenticateToken } from './middleware/auth';
 import db from './db';
@@ -54,6 +55,7 @@ export function buildApp(): express.Express {
   app.use('/favorites', authenticateToken, favoritesRouter);
   app.use('/tags', authenticateToken, tagsRouter);
   app.use('/config', authenticateToken, configRouter);
+  app.use('/auth/api-keys', authenticateToken, apiKeysRouter);
 
   return app;
 }
