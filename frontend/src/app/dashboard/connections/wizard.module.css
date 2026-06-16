@@ -77,8 +77,8 @@
 .testOk {
   font-size: 0.8125rem;
   padding: var(--sp-2) var(--sp-3);
-  background: rgba(34, 197, 94, 0.08);
-  border: 0.0625rem solid rgba(34, 197, 94, 0.25);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  border: 0.0625rem solid color-mix(in srgb, var(--color-success) 25%, transparent);
   border-radius: var(--sp-2);
   color: var(--success);
 }
@@ -86,8 +86,8 @@
 .testError {
   font-size: 0.8125rem;
   padding: var(--sp-2) var(--sp-3);
-  background: rgba(239, 68, 68, 0.08);
-  border: 0.0625rem solid rgba(239, 68, 68, 0.25);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  border: 0.0625rem solid color-mix(in srgb, var(--color-danger) 25%, transparent);
   border-radius: var(--sp-2);
   color: var(--danger);
 }

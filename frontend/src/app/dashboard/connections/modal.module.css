@@ -10,8 +10,8 @@
 }
 
 .modal {
-  background: var(--surface);
-  border: 0.0625rem solid var(--border);
+  background: var(--color-elevated);
+  border: 0.0625rem solid var(--color-border);
   border-radius: var(--sp-3);
   width: 100%;
   max-width: 32.5rem;

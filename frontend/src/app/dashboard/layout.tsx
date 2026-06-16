@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { isLoggedIn, getUser, clearAuth, AuthUser } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { ToastProvider } from '@/lib/toast';
+import ThemeToggle from '@/components/ThemeToggle';
 import styles from './layout.module.css';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -90,8 +91,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
           <div className={styles.navRight}>
+            <ThemeToggle />
             {isViewer && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '0.125rem 0.4375rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--color-muted)', background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', border: '0.0625rem solid color-mix(in srgb, var(--color-text) 12%, transparent)', borderRadius: '0.25rem', padding: '0.125rem 0.4375rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Viewer
               </span>
             )}

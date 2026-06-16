@@ -48,7 +48,7 @@
   transition: background var(--duration-fast);
 }
 .row:last-child { border-bottom: none; }
-.row:hover { background: rgba(255,255,255,0.04); }
+.row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 
 .connName { font-weight: 500; }
 .connError { color: var(--danger); font-size: 0.6875rem; margin-top: 0.125rem; }
