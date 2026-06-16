@@ -221,7 +221,15 @@ function BillingContent() {
                   {topServices.map(([service, amount]) => (
                     <div key={service} className={styles.serviceRow}>
                       <div className={styles.serviceInfo}>
-                        <div className={styles.serviceName}>{service}</div>
+                        <div className={styles.serviceName}>
+                          {service === 'Unknown' ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                              <span style={{ color: 'var(--color-warning)' }}>⚠</span>
+                              <span>Unknown</span>
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--color-muted)' }}>— uncategorized</span>
+                            </span>
+                          ) : service}
+                        </div>
                         <div className={styles.bar} style={{ width: `${(amount / maxService) * 100}%` }} />
                       </div>
                       <div className={styles.amount}>{fmtUsd(amount)}</div>

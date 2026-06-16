@@ -109,7 +109,7 @@
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.4px;
   display: inline-block;
   width: 5.625rem;
@@ -188,8 +188,8 @@
 .error {
   margin-top: var(--sp-4);
   padding: var(--sp-3) var(--sp-4);
-  background: rgba(239, 68, 68, 0.08);
-  border: 0.0625rem solid rgba(239, 68, 68, 0.25);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  border: 0.0625rem solid color-mix(in srgb, var(--color-danger) 25%, transparent);
   border-radius: var(--sp-2);
   font-size: 0.8125rem;
   color: var(--danger);
@@ -238,7 +238,7 @@
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.4px;
   width: 8.125rem;
   flex-shrink: 0;
@@ -273,7 +273,7 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.4px;
 }
 
@@ -349,7 +349,7 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.4px;
 }
 

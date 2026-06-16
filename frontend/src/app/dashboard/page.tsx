@@ -141,7 +141,19 @@ export default function DashboardPage() {
             </div>
             <div className={styles.cardNote}>
               {hasActuals
-                ? `${fmtUsd(estMonthly)}/mo est. · ${actualTotal > 0 ? ((actualTotal / estMonthly) * 100).toFixed(0) : '—'}% of est.`
+                ? (() => {
+                    const pct = actualTotal > 0 && estMonthly > 0 ? (actualTotal / estMonthly) * 100 : null;
+                    return (
+                      <>
+                        {fmtUsd(estMonthly)}/mo est. ·{' '}
+                        {pct !== null ? (
+                          <span style={{ color: pct > 100 ? 'var(--color-danger)' : undefined, fontWeight: pct > 100 ? 600 : undefined }}>
+                            {pct > 100 ? '↑' : ''}{pct.toFixed(0)}% of est.{pct > 100 ? ' — over budget' : ''}
+                          </span>
+                        ) : '—% of est.'}
+                      </>
+                    );
+                  })()
                 : `${fmtMonthly(estMonthly)} projected`}
             </div>
           </div>

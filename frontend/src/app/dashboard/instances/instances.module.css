@@ -264,7 +264,7 @@
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-accent) 15%, transparent);
   color: var(--color-accent);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.03em;
 }
 
@@ -433,7 +433,7 @@
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--color-muted);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.03em;
   margin-bottom: var(--sp-3);
 }

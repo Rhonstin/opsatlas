@@ -128,6 +128,13 @@ export default function ConnectionsTab() {
         <button className="btn-primary" onClick={() => setShowModal(true)}>+ Add connection</button>
       </div>
 
+      {connections.some(c => c.status === 'error') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1rem', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '0.0625rem solid color-mix(in srgb, var(--color-danger) 25%, transparent)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
+          <span>⚠</span>
+          <span style={{ flex: 1 }}>{connections.filter(c => c.status === 'error').length} connection(s) have errors — check credentials or re-test</span>
+        </div>
+      )}
+
       {loading && <p className={connStyles.empty}>Loading…</p>}
       {error && <p className="error-msg">{error}</p>}
 
@@ -207,7 +214,7 @@ export default function ConnectionsTab() {
                       {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                     </button>
                   )}
-                  <button className="btn-danger" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleDelete(conn.id)}>Delete</button>
+                  <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', color: 'var(--color-danger)' }} onClick={() => handleDelete(conn.id)}>Delete</button>
                 </span>
               </div>
             ))}

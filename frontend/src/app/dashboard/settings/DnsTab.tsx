@@ -138,7 +138,7 @@ export default function DnsTab() {
                 <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
                   {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                 </button>
-                <button className="btn-danger" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleDelete(conn.id)}>Delete</button>
+                <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', color: 'var(--color-danger)' }} onClick={() => handleDelete(conn.id)}>Delete</button>
               </span>
             </div>
           ))}
