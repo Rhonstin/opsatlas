@@ -288,6 +288,19 @@ export const api = {
 
   removeInstanceTag: (instanceId: string, tagId: string) =>
     request<{ ok: boolean }>(`/tags/instances/${instanceId}/tags/${tagId}`, { method: 'DELETE' }),
+
+  // API Keys
+  getApiKeys: () =>
+    request<ApiKey[]>('/auth/api-keys'),
+
+  createApiKey: (name: string) =>
+    request<ApiKey & { key: string }>('/auth/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteApiKey: (id: string) =>
+    request<void>(`/auth/api-keys/${id}`, { method: 'DELETE' }),
 };
 
 export interface SyncRun {
@@ -524,4 +537,12 @@ export interface ConfigImportResult {
     status: 'created' | 'skipped';
     reason?: string;
   }>;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
 }

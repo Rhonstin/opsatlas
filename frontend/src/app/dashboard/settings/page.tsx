@@ -8,9 +8,10 @@ import BillingTab from './BillingTab';
 import SsoTab from './SsoTab';
 import SecurityTab from './SecurityTab';
 import ConfigTab from './ConfigTab';
+import ApiKeysTab from './ApiKeysTab';
 import styles from './settings.module.css';
 
-type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'config' | 'security';
+type Tab = 'connections' | 'dns' | 'billing' | 'sso' | 'security' | 'config' | 'api-keys';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'connections', label: 'Connections' },
@@ -18,6 +19,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'billing', label: 'Billing' },
   { id: 'sso', label: 'SSO' },
   { id: 'security', label: 'Security' },
+  { id: 'api-keys', label: 'API Keys' },
   { id: 'config', label: 'Config' },
 ];
 
@@ -60,6 +62,7 @@ function SettingsContent() {
         {tab === 'billing' && <BillingTab />}
         {tab === 'sso' && <SsoTab />}
         {tab === 'security' && <SecurityTab />}
+        {tab === 'api-keys' && <ApiKeysTab />}
         {tab === 'config' && <ConfigTab />}
       </div>
     </div>
