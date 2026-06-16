@@ -243,7 +243,7 @@ function InstancesPageInner() {
                 title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
               >
                 Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
-                <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
+                <span style={{ marginLeft: '0.25rem', fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
               </button>
             )}
             <span>IPs / Domains</span>
@@ -331,7 +331,7 @@ function InstancesPageInner() {
         </div>
       )}
       {sorted.length > 0 && (
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: '0.625rem' }}>
           * Running instances: compute (CPU + RAM) + persistent disk. Stopped/terminated instances: disk storage only (compute = $0). Network egress and managed services excluded.
         </p>
       )}

@@ -96,12 +96,12 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
         <div className={styles.modalHeader}>
           <div>
             <h2>GCP Projects</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{connectionName}</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.75rem', marginTop: '0.125rem' }}>{connectionName}</p>
           </div>
           <button className={styles.closeBtn} onClick={onClose} type="button">✕</button>
         </div>
 
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Discover button */}
           <div className={pStyles.discoverRow}>
             <p className={pStyles.hint}>
@@ -115,10 +115,10 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
           {/* Project list */}
           {discovered.length > 0 && (
             <div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} type="button"
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} type="button"
                   onClick={() => setSelected(new Set(discovered.map((p) => p.projectId)))}>Select all</button>
-                <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} type="button"
+                <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} type="button"
                   onClick={() => setSelected(new Set())}>Deselect all</button>
               </div>
               <div className={pStyles.list}>
@@ -128,7 +128,7 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
                     <label key={p.projectId} className={pStyles.item}>
                       <input type="checkbox" checked={selected.has(p.projectId)} onChange={() => toggle(p.projectId)} />
                       <div className={pStyles.itemInfo}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span className={pStyles.itemName}>{p.name}</span>
                           {syncInfo?.last_error && (
                             <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>Sync error</span>
@@ -162,7 +162,7 @@ export default function ProjectsModal({ connectionId, connectionName, onClose, o
 
           <div className={pStyles.footer}>
             <span className={pStyles.count}>{selected.size} project{selected.size !== 1 ? 's' : ''} selected</span>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: '0.625rem' }}>
               <button className="btn-ghost" onClick={onClose} type="button">Cancel</button>
               <button className="btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}

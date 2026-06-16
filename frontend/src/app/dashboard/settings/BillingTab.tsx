@@ -61,7 +61,7 @@ export default function BillingTab() {
               Run this once per month or enable auto-fetch via an Auto-Update policy.
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
             <select
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
@@ -83,7 +83,7 @@ export default function BillingTab() {
 
       <div className={styles.card}>
         <div className={styles.cardTitle}>Auto-fetch</div>
-        <div className={styles.cardDesc} style={{ marginTop: 6 }}>
+        <div className={styles.cardDesc} style={{ marginTop: '0.375rem' }}>
           Enable <strong>Sync cost</strong> in an{' '}
           <Link href="/dashboard/auto-update" className={styles.inlineLink}>Auto-Update policy</Link>{' '}
           to fetch billing data automatically on each sync cycle.

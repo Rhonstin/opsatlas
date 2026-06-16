@@ -80,7 +80,7 @@ export default function InstanceDrawer({
             {inst && (
               <div className={styles.drawerTitleMeta}>
                 <span className={`badge ${statusClass(inst.status)}`}>{inst.status}</span>
-                <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600 }}>
                   {inst.provider.toUpperCase()}
                 </span>
               </div>
@@ -90,10 +90,10 @@ export default function InstanceDrawer({
         </div>
 
         <div className={styles.drawerBody}>
-          {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
+          {error && <p style={{ color: 'var(--danger)', fontSize: '0.8125rem' }}>{error}</p>}
 
           {!inst && !error && (
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.8125rem' }}>Loading…</p>
           )}
 
           {inst && (
@@ -164,7 +164,7 @@ export default function InstanceDrawer({
 
                   <span className={styles.drawerLabel}>Disks</span>
                   {inst.disks.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                       {inst.disks.map((d, i) => (
                         <div key={i}>
                           <span className={styles.drawerValue}>
@@ -197,7 +197,7 @@ export default function InstanceDrawer({
                   {inst.domains.length > 0 && (
                     <>
                       <span className={styles.drawerLabel}>Domains</span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {inst.domains.map((d) => {
                           const isProxied = d.endsWith(' (proxied)');
                           const hostname = isProxied ? d.slice(0, -' (proxied)'.length) : d;
@@ -231,7 +231,7 @@ export default function InstanceDrawer({
                       {inst.app_urls?.length > 0 && (
                         <>
                           <span className={styles.drawerLabel}>URLs</span>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                             {inst.app_urls.map((url) => (
                               <a key={url} href={`https://${url}`} target="_blank" rel="noopener noreferrer" className={styles.domainTag}>
                                 {url}

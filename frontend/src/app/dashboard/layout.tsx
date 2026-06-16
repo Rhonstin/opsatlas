@@ -91,12 +91,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div className={styles.navRight}>
             {isViewer && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '0.125rem 0.4375rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Viewer
               </span>
             )}
             <span className={styles.userEmail}>{user?.email}</span>
-            <button className="btn-ghost" onClick={logout} style={{ padding: '5px 12px' }}>
+            <button className="btn-ghost" onClick={logout} style={{ padding: '0.3125rem 0.75rem' }}>
               Sign out
             </button>
           </div>

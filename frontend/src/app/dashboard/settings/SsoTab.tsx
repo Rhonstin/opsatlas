@@ -87,7 +87,7 @@ export default function SsoTab() {
       </div>
 
       <div className={styles.card}>
-        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
           Authentik
           {!loading && (
             <span className={`badge ${enabled ? 'badge-active' : 'badge-pending'}`}>
@@ -95,14 +95,14 @@ export default function SsoTab() {
             </span>
           )}
           {enabled && (
-            <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }} onClick={testSso}>
+            <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem', marginLeft: 'auto' }} onClick={testSso}>
               Test login
             </button>
           )}
         </div>
 
         {loading ? (
-          <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
+          <p style={{ color: 'var(--muted)', fontSize: '0.8125rem' }}>Loading…</p>
         ) : (
           <form onSubmit={handleSave} className={styles.ssoForm}>
             <div className={styles.ssoField}>
@@ -128,14 +128,14 @@ export default function SsoTab() {
             <div className={styles.ssoField}>
               <label className={styles.ssoFieldLabel}>Client Secret</label>
               {hasExistingSecret && !changeSecret ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <span className={styles.ssoSecretMasked}>••••••••••••</span>
-                  <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setChangeSecret(true)}>
+                  <button type="button" className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} onClick={() => setChangeSecret(true)}>
                     Change
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <input
                     type="password"
                     value={clientSecret}
@@ -146,7 +146,7 @@ export default function SsoTab() {
                     autoFocus={changeSecret}
                   />
                   {hasExistingSecret && (
-                    <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
+                    <button type="button" className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
                       Cancel
                     </button>
                   )}
@@ -154,7 +154,7 @@ export default function SsoTab() {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
               <button type="submit" className="btn-primary" disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
@@ -242,8 +242,8 @@ function GoogleSsoCard() {
   }
 
   return (
-    <div className={styles.card} style={{ marginTop: 16 }}>
-      <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+    <div className={styles.card} style={{ marginTop: '1rem' }}>
+      <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
         Google Workspace
         {!loading && (
           <span className={`badge ${enabled ? 'badge-active' : 'badge-pending'}`}>
@@ -251,14 +251,14 @@ function GoogleSsoCard() {
           </span>
         )}
         {enabled && (
-          <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }} onClick={testGoogle}>
+          <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem', marginLeft: 'auto' }} onClick={testGoogle}>
             Test login
           </button>
         )}
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</p>
+        <p style={{ color: 'var(--muted)', fontSize: '0.8125rem' }}>Loading…</p>
       ) : (
         <form onSubmit={handleSave} className={styles.ssoForm}>
           <div className={styles.ssoField}>
@@ -274,14 +274,14 @@ function GoogleSsoCard() {
           <div className={styles.ssoField}>
             <label className={styles.ssoFieldLabel}>Client Secret</label>
             {hasExistingSecret && !changeSecret ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <span className={styles.ssoSecretMasked}>••••••••••••</span>
-                <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setChangeSecret(true)}>
+                <button type="button" className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} onClick={() => setChangeSecret(true)}>
                   Change
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <input
                   type="password"
                   value={clientSecret}
@@ -292,7 +292,7 @@ function GoogleSsoCard() {
                   autoFocus={changeSecret}
                 />
                 {hasExistingSecret && (
-                  <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
+                  <button type="button" className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} onClick={() => { setChangeSecret(false); setClientSecret(''); }}>
                     Cancel
                   </button>
                 )}
@@ -308,9 +308,9 @@ function GoogleSsoCard() {
               placeholder="yourcompany.com"
               className={styles.ssoInput}
             />
-            <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Restrict sign-in to this Google Workspace domain. Leave empty to allow any Google account.</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>Restrict sign-in to this Google Workspace domain. Leave empty to allow any Google account.</p>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
             <button type="submit" className="btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>

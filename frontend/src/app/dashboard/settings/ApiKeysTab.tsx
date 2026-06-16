@@ -71,16 +71,16 @@ export default function ApiKeysTab() {
       </div>
 
       {createdKey && (
-        <div className={styles.card} style={{ borderColor: 'var(--success)', marginBottom: 16 }}>
-          <div className={styles.cardTitle} style={{ color: 'var(--success)', marginBottom: 8 }}>
+        <div className={styles.card} style={{ borderColor: 'var(--success)', marginBottom: '1rem' }}>
+          <div className={styles.cardTitle} style={{ color: 'var(--success)', marginBottom: '0.5rem' }}>
             Key created successfully
           </div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
             Copy this key now — it will not be shown again.
           </div>
-          <div ref={keyRef} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div ref={keyRef} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <code style={{
-              fontSize: 13,
+              fontSize: '0.8125rem',
               padding: '8px 12px',
               background: 'var(--bg)',
               borderRadius: 6,
@@ -91,10 +91,10 @@ export default function ApiKeysTab() {
             }}>
               {createdKey}
             </code>
-            <button className="btn-primary" style={{ fontSize: 13, whiteSpace: 'nowrap' }} onClick={copyKey}>
+            <button className="btn-primary" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }} onClick={copyKey}>
               Copy
             </button>
-            <button className="btn-ghost" style={{ fontSize: 13 }} onClick={dismissCreatedKey}>
+            <button className="btn-ghost" style={{ fontSize: '0.8125rem' }} onClick={dismissCreatedKey}>
               Done
             </button>
           </div>
@@ -102,7 +102,7 @@ export default function ApiKeysTab() {
       )}
 
       <div className={styles.card}>
-        <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <form onSubmit={handleCreate} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           <input
             type="text"
             value={newKeyName}
@@ -111,15 +111,15 @@ export default function ApiKeysTab() {
             style={{ flex: 1 }}
             maxLength={100}
           />
-          <button type="submit" className="btn-primary" disabled={creating || !newKeyName.trim()} style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+          <button type="submit" className="btn-primary" disabled={creating || !newKeyName.trim()} style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
             {creating ? 'Creating…' : 'Create key'}
           </button>
         </form>
 
         {loading ? (
-          <div style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</div>
+          <div style={{ color: 'var(--muted)', fontSize: '0.8125rem' }}>Loading…</div>
         ) : keys.length === 0 ? (
-          <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>
+          <div style={{ color: 'var(--muted)', fontSize: '0.8125rem', textAlign: 'center', padding: '24px 0' }}>
             No API keys yet. Create one above to connect MCP clients.
           </div>
         ) : (
@@ -137,20 +137,20 @@ export default function ApiKeysTab() {
               <tbody>
                 {keys.map((k) => (
                   <tr key={k.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 12px', fontSize: 14 }}>{k.name}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.875rem' }}>{k.name}</td>
                     <td style={{ padding: '10px 12px' }}>
-                      <code style={{ fontSize: 13, color: 'var(--muted)' }}>{k.key_prefix}…</code>
+                      <code style={{ fontSize: '0.8125rem', color: 'var(--muted)' }}>{k.key_prefix}…</code>
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 13, color: 'var(--muted)' }}>
+                    <td style={{ padding: '10px 12px', fontSize: '0.8125rem', color: 'var(--muted)' }}>
                       {new Date(k.created_at).toLocaleDateString()}
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 13, color: 'var(--muted)' }}>
+                    <td style={{ padding: '10px 12px', fontSize: '0.8125rem', color: 'var(--muted)' }}>
                       {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : '—'}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                       <button
                         className="btn-ghost"
-                        style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)' }}
+                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem', color: 'var(--danger)' }}
                         onClick={() => handleDelete(k.id, k.name)}
                         title={`Delete ${k.name}`}
                       >

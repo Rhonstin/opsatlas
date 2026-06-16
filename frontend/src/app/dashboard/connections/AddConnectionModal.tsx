@@ -175,14 +175,14 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
       <div className={styles.modal} style={{ maxWidth: step === 1 ? 560 : 520 }}>
         {/* Header */}
         <div className={styles.modalHeader}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
             {step > 1 && (
               <button
                 className={styles.closeBtn}
                 type="button"
                 onClick={() => { setStep((step - 1) as Step); setError(''); setTestResult(null); }}
                 title="Back"
-                style={{ fontSize: 18 }}
+                style={{ fontSize: '1.125rem' }}
               >
                 ←
               </button>
@@ -193,7 +193,7 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
               {step === 3 && 'GCP Projects'}
             </h2>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
             <div className={wStyles.dots}>
               {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                 <span
@@ -297,7 +297,7 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
               <button type="button" className="btn-ghost" onClick={handleTest} disabled={testing}>
                 {testing ? 'Testing…' : 'Test credentials'}
               </button>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', gap: '0.625rem' }}>
                 <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={creating}>
                   {creating ? 'Creating…' : provider === 'gcp' ? 'Next →' : 'Add connection'}
@@ -309,7 +309,7 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
 
         {/* ── Step 3: GCP Projects ── */}
         {step === 3 && (
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <p className={wStyles.stepHint}>
               Choose which projects to sync. You can change this anytime from the connections list.
             </p>
@@ -318,17 +318,17 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
               <button className="btn-ghost" onClick={handleDiscover} disabled={discovering}>
                 {discovering ? 'Discovering…' : 'Discover projects'}
               </button>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--muted)' }}>
                 or add project IDs manually below
               </span>
             </div>
 
             {discovered.length > 0 && (
               <div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} type="button"
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} type="button"
                     onClick={() => setSelected(new Set(discovered.map(p => p.projectId)))}>Select all</button>
-                  <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 10px' }} type="button"
+                  <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }} type="button"
                     onClick={() => setSelected(new Set())}>Deselect all</button>
                 </div>
                 <div className={wStyles.projectList}>
@@ -354,10 +354,10 @@ export default function AddConnectionModal({ onClose, onCreated }: Props) {
             {discoverError && <p className="error-msg">{discoverError}</p>}
 
             <div className={wStyles.stepFooter}>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--muted)' }}>
                 {selected.size} project{selected.size !== 1 ? 's' : ''} selected
               </span>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', gap: '0.625rem' }}>
                 <button className="btn-ghost" type="button" onClick={finishWithConn}>Skip</button>
                 <button className="btn-primary" type="button" onClick={handleFinish} disabled={savingProjects}>
                   {savingProjects ? 'Saving…' : 'Finish'}

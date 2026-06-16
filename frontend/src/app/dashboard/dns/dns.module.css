@@ -2,35 +2,35 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 28px;
-  gap: 16px;
+  margin-bottom: 1.75rem;
+  gap: var(--sp-4);
 }
-.heading { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-.sub { color: var(--muted); font-size: 13px; }
+.heading { font-size: 1.375rem; font-weight: 700; margin-bottom: var(--sp-1); }
+.sub { color: var(--muted); font-size: 0.8125rem; }
 
 .empty { color: var(--muted); }
 
 .emptyState {
   background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  padding: 48px;
+  border: 0.0625rem dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-12);
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .table {
-  border-top: 1px solid var(--border);
+  border-top: 0.0625rem solid var(--border);
 }
 
 .tableHeader {
   display: grid;
-  grid-template-columns: 2fr 130px 110px 180px 220px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  grid-template-columns: 2fr 8.125rem 6.875rem 11.25rem 13.75rem;
+  padding: 0.4375rem var(--sp-3);
+  border-bottom: 0.0625rem solid var(--border);
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
@@ -40,22 +40,22 @@
 
 .row {
   display: grid;
-  grid-template-columns: 2fr 130px 110px 180px 220px;
-  padding: 10px 12px;
+  grid-template-columns: 2fr 8.125rem 6.875rem 11.25rem 13.75rem;
+  padding: 0.625rem var(--sp-3);
   align-items: center;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  transition: background 0.1s;
+  border-bottom: 0.0625rem solid var(--border);
+  font-size: 0.8125rem;
+  transition: background var(--duration-fast);
 }
 .row:last-child { border-bottom: none; }
 .row:hover { background: rgba(255,255,255,0.04); }
 
 .connName { font-weight: 500; }
-.connError { color: var(--danger); font-size: 11px; margin-top: 2px; }
-.provider { color: var(--muted); font-size: 12px; font-weight: 600; }
-.muted { color: var(--muted); font-size: 12px; }
+.connError { color: var(--danger); font-size: 0.6875rem; margin-top: 0.125rem; }
+.provider { color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.muted { color: var(--muted); font-size: var(--text-xs); }
 
-.actions { display: flex; gap: 6px; justify-content: flex-end; }
+.actions { display: flex; gap: 0.375rem; justify-content: flex-end; }
 
 /* Modal */
 .overlay {
@@ -70,68 +70,68 @@
 
 .modal {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sp-3);
   width: 100%;
-  max-width: 480px;
+  max-width: 30rem;
   padding: 0;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+  box-shadow: 0 1.5rem 4rem rgba(0,0,0,0.4);
 }
 
 .modalHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px 0;
+  padding: var(--sp-5) var(--sp-6) 0;
 }
 
-.modalTitle { font-size: 16px; font-weight: 700; }
+.modalTitle { font-size: var(--text-base); font-weight: 700; }
 
 .closeBtn {
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 1.125rem;
   cursor: pointer;
-  padding: 4px;
+  padding: var(--sp-1);
   line-height: 1;
 }
 .closeBtn:hover { color: var(--text); }
 
 .modalBody {
-  padding: 20px 24px 24px;
+  padding: var(--sp-5) var(--sp-6) var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
-.field { display: flex; flex-direction: column; gap: 6px; }
-.label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.field { display: flex; flex-direction: column; gap: 0.375rem; }
+.label { font-size: var(--text-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
 
 .input {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: 0.8125rem;
   color: var(--text);
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration-fast);
 }
 .input:focus { border-color: var(--accent); }
 
 .providerFixed {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: 0.8125rem;
   color: var(--muted);
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
   line-height: 1.5;
   margin: 0;
@@ -140,6 +140,6 @@
 .modalFooter {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
+  gap: var(--sp-2);
+  padding-top: var(--sp-1);
 }

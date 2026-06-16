@@ -60,8 +60,8 @@ function CallbackInner() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ maxWidth: 400, textAlign: 'center' }}>
-          <p style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</p>
-          <a href="/login" style={{ color: 'var(--accent)', fontSize: 14 }}>Back to login</a>
+          <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</p>
+          <a href="/login" style={{ color: 'var(--accent)', fontSize: '0.875rem' }}>Back to login</a>
         </div>
       </div>
     );
@@ -69,7 +69,7 @@ function CallbackInner() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: 'var(--muted)', fontSize: 14 }}>Signing you in…</p>
+      <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>Signing you in…</p>
     </div>
   );
 }
@@ -78,7 +78,7 @@ export default function AuthCallbackPage() {
   return (
     <Suspense fallback={
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--muted)', fontSize: 14 }}>Loading…</p>
+        <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>Loading…</p>
       </div>
     }>
       <CallbackInner />

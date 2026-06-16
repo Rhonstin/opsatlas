@@ -239,7 +239,7 @@ export default function ConfigTab() {
           </div>
           <button
             className={allowRegistrations ? 'btn-danger' : 'btn-primary'}
-            style={{ fontSize: 13, flexShrink: 0 }}
+            style={{ fontSize: '0.8125rem', flexShrink: 0 }}
             onClick={handleToggleRegistrations}
             disabled={togglingReg || allowRegistrations === null}
           >
@@ -247,7 +247,7 @@ export default function ConfigTab() {
           </button>
         </div>
         {allowRegistrations !== null && (
-          <div style={{ marginTop: 10, fontSize: 13, color: allowRegistrations ? '#22c55e' : 'var(--muted)' }}>
+          <div style={{ marginTop: '0.625rem', fontSize: '0.8125rem', color: allowRegistrations ? '#22c55e' : 'var(--muted)' }}>
             {allowRegistrations ? 'Registrations are open' : 'Registrations are closed — SSO or invite only'}
           </div>
         )}
@@ -261,7 +261,7 @@ export default function ConfigTab() {
               All estimated costs and billing actuals are converted to this currency during sync using live exchange rates (Frankfurter / ECB). Re-sync connections after changing.
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
             <select
               value={preferredCurrency}
               onChange={(e) => setPreferredCurrency(e.target.value)}
@@ -271,7 +271,7 @@ export default function ConfigTab() {
                 <option key={c.code} value={c.code}>{c.label}</option>
               ))}
             </select>
-            <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSaveCurrency} disabled={savingCurrency}>
+            <button className="btn-primary" style={{ fontSize: '0.8125rem' }} onClick={handleSaveCurrency} disabled={savingCurrency}>
               {savingCurrency ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -315,7 +315,7 @@ export default function ConfigTab() {
 
         {/* Decrypt form for encrypted files */}
         {pendingFile && (
-          <form onSubmit={handleDecryptAndImport} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <form onSubmit={handleDecryptAndImport} style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div className={styles.pwField}>
               <label className={styles.pwLabel}>Decryption password</label>
               <input
@@ -327,7 +327,7 @@ export default function ConfigTab() {
                 autoFocus
               />
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: '0.625rem' }}>
               <button type="button" className="btn-ghost" onClick={() => { setPendingFile(null); setImportPw(''); setImportError(''); }}>
                 Cancel
               </button>

@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <div className={styles.cardNote}>
             {running} running
             {activeProviders.length > 0 && (
-              <span style={{ marginLeft: 8, color: 'var(--muted)' }}>
+              <span style={{ marginLeft: '0.5rem', color: 'var(--muted)' }}>
                 · {activeProviders.map((p) => `${p.toUpperCase()} ${providerStats[p].instances}`).join(' · ')}
               </span>
             )}
@@ -160,7 +160,7 @@ export default function DashboardPage() {
 
       {/* ── Row 2: health signals (admin only for cost-related) ── */}
       {!isViewer && (longRunning > 0 || idleCandidates > 0 || domainsMapped > 0) && (
-        <div className={styles.cards} style={{ marginTop: 16 }}>
+        <div className={styles.cards} style={{ marginTop: '1rem' }}>
           {longRunning > 0 && (
             <div className="card">
               <div className={styles.cardTitle}>Long-running</div>
