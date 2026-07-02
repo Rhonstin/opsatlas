@@ -128,6 +128,13 @@ export default function ConnectionsTab() {
         <button className="btn-primary" onClick={() => setShowModal(true)}>+ Add connection</button>
       </div>
 
+      {connections.some(c => c.status === 'error') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1rem', background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '0.0625rem solid color-mix(in srgb, var(--color-danger) 25%, transparent)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
+          <span>⚠</span>
+          <span style={{ flex: 1 }}>{connections.filter(c => c.status === 'error').length} connection(s) have errors — check credentials or re-test</span>
+        </div>
+      )}
+
       {loading && <p className={connStyles.empty}>Loading…</p>}
       {error && <p className="error-msg">{error}</p>}
 
@@ -157,7 +164,7 @@ export default function ConnectionsTab() {
                 <span>                <span>
                   <span className={`badge badge-${conn.status}`}>{conn.status}</span>
                   {projectStatus[conn.id]?.errored > 0 && conn.status === 'active' && (
-                    <span className="badge badge-warning" style={{ marginLeft: 4 }}>partial</span>
+                    <span className="badge badge-warning" style={{ marginLeft: '0.25rem' }}>partial</span>
                   )}
                 </span></span>
                 <span>
@@ -171,7 +178,7 @@ export default function ConnectionsTab() {
                       {projectStatus[conn.id]?.errored > 0 && (
                         <button
                           className={connStyles.projectsBtn}
-                          style={{ color: 'var(--error-color, #e53e3e)', marginLeft: 4, fontSize: 11 }}
+                          style={{ color: 'var(--danger)', marginLeft: '0.25rem', fontSize: 11 }}
                           onClick={() => setExpandedProjects((prev) => ({ ...prev, [conn.id]: !prev[conn.id] }))}
                           title={projectStatus[conn.id]?.errors.join('\n')}
                         >
@@ -179,7 +186,7 @@ export default function ConnectionsTab() {
                         </button>
                       )}
                       {expandedProjects[conn.id] && projectStatus[conn.id]?.errors.length > 0 && (
-                        <div style={{ fontSize: 11, color: 'var(--error-color, #e53e3e)', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: '0.125rem' }}>
                           {projectStatus[conn.id].errors.map((e, i) => (
                             <div key={i} title={e}>• {e.split(':')[0]}</div>
                           ))}
@@ -198,16 +205,16 @@ export default function ConnectionsTab() {
                   {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}
                 </span>
                 <span className={connStyles.actions}>
-                  <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setEditModal(conn)}>Edit</button>
-                  <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleTest(conn.id)}>
+                  <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => setEditModal(conn)}>Edit</button>
+                  <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleTest(conn.id)}>
                     {testResults[conn.id] ?? 'Test'}
                   </button>
                   {['gcp', 'hetzner', 'aws', 'coolify'].includes(conn.provider) && (
-                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
+                    <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
                       {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                     </button>
                   )}
-                  <button className="btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleDelete(conn.id)}>Delete</button>
+                  <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', color: 'var(--color-danger)' }} onClick={() => handleDelete(conn.id)}>Delete</button>
                 </span>
               </div>
             ))}

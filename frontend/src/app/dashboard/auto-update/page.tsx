@@ -92,7 +92,7 @@ function AddPolicyForm({ onCreated, onCancel }: { onCreated: (p: AutoUpdatePolic
       </div>
 
       <div>
-        <div className={styles.formLabel} style={{ marginBottom: 8 }}>Refresh</div>
+        <div className={styles.formLabel} style={{ marginBottom: '0.5rem' }}>Refresh</div>
         <div className={styles.checkRow}>
           <label className={styles.checkItem}>
             <input type="checkbox" checked={syncInstances} onChange={(e) => setSyncInstances(e.target.checked)} />
@@ -134,7 +134,7 @@ function RunHistory({ policyId, policy }: { policyId: string; policy: AutoUpdate
   }, [policyId]);
 
   if (loading) return <p className={styles.cardStatus}>Loading history…</p>;
-  if (runs.length === 0) return <p className={styles.cardStatus} style={{ marginTop: 8 }}>No runs yet.</p>;
+  if (runs.length === 0) return <p className={styles.cardStatus} style={{ marginTop: '0.5rem' }}>No runs yet.</p>;
 
   const syncedTypes = [
     policy.sync_instances && 'instances',
@@ -220,7 +220,7 @@ function PolicyCard({
           {policy.failure_count > 0 && (
             <>
               <span>·</span>
-              <span style={{ color: 'var(--error, #ef4444)' }}>{policy.failure_count} failure{policy.failure_count !== 1 ? 's' : ''}</span>
+              <span style={{ color: 'var(--danger)' }}>{policy.failure_count} failure{policy.failure_count !== 1 ? 's' : ''}</span>
             </>
           )}
         </div>
@@ -236,11 +236,11 @@ function PolicyCard({
             </span>
           )}
           {policy.last_status === 'error' && policy.last_error
-            ? <span style={{ color: 'var(--error, #ef4444)' }}>{policy.last_error}</span>
+            ? <span style={{ color: 'var(--danger)' }}>{policy.last_error}</span>
             : <span>{fmtDate(policy.last_run_at)}</span>
           }
           {policy.next_run_at && policy.enabled && (
-            <span style={{ marginLeft: 12, color: 'var(--muted)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--muted)' }}>
               Next: {fmtDate(policy.next_run_at)}
             </span>
           )}
@@ -256,14 +256,14 @@ function PolicyCard({
         </label>
         <button
           className="btn-ghost"
-          style={{ fontSize: 12, padding: '3px 10px' }}
+          style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
           onClick={() => setShowHistory((v) => !v)}
         >
           {showHistory ? 'Hide history' : 'History'}
         </button>
         <button
           className="btn-ghost"
-          style={{ fontSize: 12, padding: '3px 10px' }}
+          style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
           onClick={runNow}
           disabled={running}
         >
@@ -271,7 +271,7 @@ function PolicyCard({
         </button>
         <button
           className="btn-ghost"
-          style={{ fontSize: 12, padding: '3px 10px', color: 'var(--error, #ef4444)' }}
+          style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem', color: 'var(--danger)' }}
           onClick={remove}
         >
           Delete
@@ -324,10 +324,10 @@ export default function AutoUpdatePage() {
       </div>
 
       {loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)', fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.8125rem' }}>{error}</p>}
 
       {showForm && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: '1rem' }}>
           <AddPolicyForm onCreated={handleCreated} onCancel={() => setShowForm(false)} />
         </div>
       )}

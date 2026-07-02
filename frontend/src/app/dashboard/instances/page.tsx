@@ -3,47 +3,83 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, Instance } from '@/lib/api';
 import { getUser } from '@/lib/auth';
-import { useSort } from '@/lib/useSort';
-import { calcCostToDate, isLongRunning, isIdle, fmtUptime } from '@/lib/cost';
+import { calcCostToDate, fmtUptime } from '@/lib/cost';
 import InstanceDrawer from './InstanceDrawer';
 import styles from './instances.module.css';
 
 type InstanceWithDns = Instance & { domains: string[] | null };
-
-const STATUS_BADGE: Record<string, string> = {
-  RUNNING: 'badge-active',
-  RUN: 'badge-active',
-  STOPPED: 'badge-error',
-  TERMINATED: 'badge-error',
-  SUSPENDED: 'badge-pending',
-  STAGING: 'badge-pending',
-};
-
-function statusClass(s: string): string {
-  return STATUS_BADGE[s.toUpperCase()] ?? 'badge-pending';
-}
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$', EUR: '€', GBP: '£', JPY: '¥', SGD: 'S$',
   AUD: 'A$', CAD: 'CA$', HKD: 'HK$', INR: '₹', CHF: 'Fr',
 };
 
-function currencySymbol(currency: string): string {
-  return CURRENCY_SYMBOLS[currency] ?? currency;
-}
-
-function fmt(n: string | null, currency = 'USD'): string {
+function sym(currency: string): string { return CURRENCY_SYMBOLS[currency] ?? currency; }
+function fmtMonthly(n: string | null, c = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(currency)}${parseFloat(n).toFixed(4)}/hr`;
+  return `${sym(c)}${parseFloat(n).toFixed(2)}/mo`;
 }
-
-function fmtMonthly(n: string | null, currency = 'USD'): string {
+function fmtHourly(n: string | null, c = 'USD'): string {
   if (!n) return '—';
-  return `${currencySymbol(currency)}${parseFloat(n).toFixed(2)}/mo`;
+  return `${sym(c)}${parseFloat(n).toFixed(4)}/hr`;
 }
 
-type SortKey ='name' | 'provider' | 'status' | 'instance_type' | 'region' | 'uptime_hours' | 'estimated_monthly_cost';
+function uptimeDays(hours: number | null): number {
+  return hours ? Math.floor(hours / 24) : 0;
+}
+
+function statusDotClass(s: string): string {
+  const upper = s.toUpperCase();
+  if (upper === 'RUNNING' || upper === 'RUN') return styles.statusDotRunning;
+  if (upper === 'TERMINATED') return styles.statusDotTerminated;
+  if (upper === 'STOPPED') return styles.statusDotStopped;
+  return styles.statusDotDefault;
+}
+
+function statusLabel(s: string): string {
+  const upper = s.toUpperCase();
+  if (upper === 'RUNNING' || upper === 'RUN') return 'Running';
+  if (upper === 'TERMINATED') return 'Terminated';
+  if (upper === 'STOPPED') return 'Stopped';
+  if (upper === 'SUSPENDED') return 'Suspended';
+  return s;
+}
+
 type ViewMode = 'all' | 'gcp' | 'aws' | 'hetzner' | 'coolify';
+
+interface Group {
+  id: string;
+  label: string;
+  icon: string;
+  items: InstanceWithDns[];
+  defaultCollapsed: boolean;
+}
+
+function buildGroups(instances: InstanceWithDns[]): Group[] {
+  const terminated = instances.filter(i => i.status.toUpperCase() === 'TERMINATED');
+  const running = instances.filter(i => {
+    const s = i.status.toUpperCase();
+    return s === 'RUNNING' || s === 'RUN';
+  });
+  const longRunning = running.filter(i => uptimeDays(i.uptime_hours) > 90);
+  const recentRunning = running.filter(i => uptimeDays(i.uptime_hours) <= 90);
+  const other = instances.filter(i => {
+    const s = i.status.toUpperCase();
+    return s !== 'TERMINATED' && s !== 'RUNNING' && s !== 'RUN';
+  });
+
+  const sortDesc = (a: InstanceWithDns, b: InstanceWithDns) =>
+    (b.uptime_hours ?? 0) - (a.uptime_hours ?? 0);
+
+  return [
+    { id: 'terminated', label: 'Terminated', icon: '🔴', items: terminated.sort(sortDesc), defaultCollapsed: true },
+    { id: 'long-running', label: 'Running · Long-running', icon: '🟢', items: longRunning.sort(sortDesc), defaultCollapsed: false },
+    { id: 'recent', label: 'Running · Recent', icon: '🟢', items: recentRunning.sort(sortDesc), defaultCollapsed: false },
+    { id: 'other', label: 'Other', icon: '🟡', items: other.sort(sortDesc), defaultCollapsed: false },
+  ].filter(g => g.items.length > 0);
+}
+
+const INITIAL_VISIBLE = 4;
 
 function InstancesPageInner() {
   const isViewer = getUser()?.role === 'viewer';
@@ -61,6 +97,8 @@ function InstancesPageInner() {
   const [view, setView] = useState<ViewMode>(initialView);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['terminated']));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   async function handleExport() {
     setExporting(true);
@@ -86,6 +124,8 @@ function InstancesPageInner() {
 
   const filtered: InstanceWithDns[] = instances.filter((inst) => {
     if (view !== 'all' && inst.provider !== view) return false;
+    if (filterStatus && inst.status.toUpperCase() !== filterStatus.toUpperCase()) return false;
+    if (filterResourceType && inst.resource_type !== filterResourceType) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -97,25 +137,16 @@ function InstancesPageInner() {
         (inst.private_ip ?? '').includes(q) ||
         inst.connection_name.toLowerCase().includes(q) ||
         (inst.project_name ?? '').toLowerCase().includes(q) ||
-        (inst.project_external_id ?? '').toLowerCase().includes(q) ||
         (inst.instance_type ?? '').toLowerCase().includes(q)
       );
     }
     return true;
   });
 
-  const { sorted, toggle, indicator } = useSort<InstanceWithDns & Record<string, unknown>, SortKey>(
-    filtered as (InstanceWithDns & Record<string, unknown>)[],
-    'name',
-  );
-
   async function fetchInstances() {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
-      if (filterStatus) params.status = filterStatus;
-      if (filterResourceType) params.resource_type = filterResourceType;
-      const data = await api.getInstancesWithDns(params);
+      const data = await api.getInstancesWithDns();
       setInstances(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load instances');
@@ -124,223 +155,252 @@ function InstancesPageInner() {
     }
   }
 
-  useEffect(() => { fetchInstances(); }, [filterStatus, filterResourceType]);
+  useEffect(() => { fetchInstances(); }, []);
 
   useEffect(() => {
     api.getServerConfig()
       .then((cfg) => setDisplayCurrency(cfg.preferredCurrency ?? 'USD'))
-      .catch(() => { /* non-fatal, keep default USD */ });
+      .catch(() => {});
   }, []);
 
+  const groups = buildGroups(filtered);
+
   const totalMonthlyCost = instances.reduce(
-    (sum, i) => sum + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0),
-    0,
+    (sum, i) => sum + (i.estimated_monthly_cost ? parseFloat(i.estimated_monthly_cost) : 0), 0,
   );
+  const runningCount = instances.filter(i => {
+    const s = i.status.toUpperCase();
+    return s === 'RUNNING' || s === 'RUN';
+  }).length;
+  const terminatedCount = instances.filter(i => i.status.toUpperCase() === 'TERMINATED').length;
+  const runningPct = instances.length > 0 ? Math.round((runningCount / instances.length) * 100) : 0;
 
-  const providerCount = (p: string) => instances.filter((i) => i.provider === p).length;
+  const providerCount = (p: string) => instances.filter(i => i.provider === p).length;
 
-  function col(key: SortKey, label: string) {
-    return (
-      <button className={styles.thBtn} onClick={() => toggle(key)}>
-        {label}<span className={styles.indicator}>{indicator(key)}</span>
-      </button>
-    );
+  function toggleGroup(id: string) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
-  function viewTab(v: ViewMode, label: string, count?: number) {
-    return (
-      <button
-        className={`${styles.viewTab} ${view === v ? styles.viewTabActive : ''}`}
-        onClick={() => setView(v)}
-      >
-        {label}{count !== undefined && count > 0 ? ` (${count})` : ''}
-      </button>
-    );
+  function expandGroup(id: string) {
+    setExpandedGroups(prev => new Set(prev).add(id));
   }
+
+  function clearFilters() {
+    setSearch('');
+    setFilterStatus('');
+    setFilterResourceType('');
+    setView('all');
+  }
+
+  const hasActiveFilters = search || filterStatus || filterResourceType || view !== 'all';
 
   return (
     <div>
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.heading}>Instances</h1>
-          <p className={styles.sub}>{instances.length} instance{instances.length !== 1 ? 's' : ''}{!isViewer && ` · est. $${totalMonthlyCost.toFixed(2)}/mo`}</p>
+      <h1 className={styles.heading} style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: 'var(--sp-5)' }}>
+        Instances
+      </h1>
+
+      {/* Metrics bar */}
+      <div className={styles.metricsBar}>
+        <div className={styles.metricCard}>
+          <div className={styles.metricLabel}>Total instances</div>
+          <div className={styles.metricValue}>{instances.length}</div>
         </div>
-        <div className={styles.filters}>
+        <div className={styles.metricCard}>
+          <div className={styles.metricLabel}>Running</div>
+          <div className={styles.metricValue}>{runningCount}</div>
+          <div className={styles.metricSub}>{runningPct}% of total</div>
+        </div>
+        <div className={styles.metricCard}>
+          <div className={styles.metricLabel}>Terminated</div>
+          <div className={`${styles.metricValue} ${terminatedCount > 0 ? styles.metricAlert : ''}`}>{terminatedCount}</div>
+          {terminatedCount > 0 && <div className={`${styles.metricSub} ${styles.metricAlert}`}>needs attention</div>}
+        </div>
+        {!isViewer && (
+          <div className={styles.metricCard}>
+            <div className={styles.metricLabel}>Est. cost</div>
+            <div className={styles.metricValue}>{sym(displayCurrency)}{totalMonthlyCost.toFixed(2)}</div>
+            <div className={styles.metricSub}>/month</div>
+          </div>
+        )}
+      </div>
+
+      {/* Alert banner */}
+      {terminatedCount > 0 && (
+        <div className={styles.alertBanner}>
+          <span className={styles.alertBannerIcon}>⚠</span>
+          <span className={styles.alertBannerText}>
+            {terminatedCount} instance{terminatedCount !== 1 ? 's' : ''} with TERMINATED status need review or deletion
+          </span>
+          <button className={styles.alertBannerBtn} onClick={() => { setFilterStatus('TERMINATED'); setView('all'); }}>
+            Show all
+          </button>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
           <input
             type="search"
             placeholder="Search name, IP, region…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value)}
             className={styles.searchInput}
           />
-          <select value={filterResourceType} onChange={(e) => setFilterResourceType(e.target.value)} style={{ width: 130 }}>
+          <select value={filterResourceType} onChange={e => setFilterResourceType(e.target.value)} className={styles.filterSelect}>
             <option value="">All types</option>
             <option value="compute">Compute</option>
             <option value="cloudsql">Cloud SQL</option>
             <option value="app">App</option>
           </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 130 }}>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={styles.filterSelect}>
             <option value="">All statuses</option>
             <option value="RUNNING">Running</option>
             <option value="STOPPED">Stopped</option>
             <option value="TERMINATED">Terminated</option>
           </select>
-          <button className="btn-ghost" onClick={handleExport} disabled={exporting || instances.length === 0}>
+        </div>
+        <div className={styles.toolbarRight}>
+          <button className="btn-ghost" onClick={handleExport} disabled={exporting || instances.length === 0} style={{ fontSize: 'var(--text-sm)' }}>
             {exporting ? 'Exporting…' : 'Export JSON'}
           </button>
         </div>
       </div>
 
-      <div className={styles.viewTabs}>
-        {viewTab('all', 'All')}
-        {viewTab('gcp', 'GCP', providerCount('gcp'))}
-        {viewTab('aws', 'AWS', providerCount('aws'))}
-        {viewTab('hetzner', 'Hetzner', providerCount('hetzner'))}
-        {providerCount('coolify') > 0 && viewTab('coolify', 'Coolify', providerCount('coolify'))}
+      {/* Provider tabs */}
+      <div className={styles.providerTabs}>
+        {(['all', 'gcp', 'aws', 'hetzner', 'coolify'] as ViewMode[]).map(v => {
+          const count = v === 'all' ? instances.length : providerCount(v);
+          if (v !== 'all' && count === 0) return null;
+          return (
+            <button
+              key={v}
+              className={`${styles.providerTab} ${view === v ? styles.providerTabActive : ''}`}
+              onClick={() => setView(v)}
+            >
+              {v === 'all' ? 'All' : v.toUpperCase()}{v !== 'all' ? ` (${count})` : ''}
+            </button>
+          );
+        })}
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
-      {error && <p className="error-msg">{error}</p>}
+      {error && <p style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>{error}</p>}
 
+      {/* Empty states */}
       {!loading && filtered.length === 0 && (
-        <div className="empty-state">
-          {view === 'all' && !search && !filterStatus && !filterResourceType ? (
+        <div className={styles.emptyState}>
+          {hasActiveFilters ? (
             <>
-              <div className="empty-state-icon">🖥</div>
-              <h3>No instances yet</h3>
-              <p>Go to Connections and click Sync to fetch your infrastructure from GCP, Hetzner, or AWS.</p>
-            </>
-          ) : view !== 'all' ? (
-            <>
-              <div className="empty-state-icon">🖥</div>
-              <h3>No {view.toUpperCase()} instances</h3>
-              <p>No instances found for this provider. Add a {view.toUpperCase()} connection and sync.</p>
+              <div className={styles.emptyIcon}>🔍</div>
+              <div className={styles.emptyTitle}>No instances match your filters</div>
+              <p className={styles.emptyDesc}>Try adjusting your search or filters.</p>
+              <button className="btn-ghost" onClick={clearFilters} style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--text-sm)' }}>
+                Clear filters
+              </button>
             </>
           ) : (
             <>
-              <div className="empty-state-icon">🔍</div>
-              <h3>No results</h3>
-              <p>Try adjusting your search or filters.</p>
+              <div className={styles.emptyIcon}>🖥</div>
+              <div className={styles.emptyTitle}>No instances yet</div>
+              <p className={styles.emptyDesc}>Go to Connections and click Sync to fetch your infrastructure.</p>
             </>
           )}
         </div>
       )}
 
-      {sorted.length > 0 && (
-        <div className={styles.tableWrap}>
-        <div className={styles.table}>
-          <div className={styles.tableHeader}>
-            {col('name', 'Name')}
-            {col('provider', 'Provider')}
-            {col('status', 'Status')}
-            {col('instance_type', 'Type')}
-            {col('region', 'Region / Zone')}
-            {col('uptime_hours', 'Uptime')}
-            {isViewer ? <span /> : (
-              <button
-                className={styles.thBtn}
-                onClick={() => toggle('estimated_monthly_cost')}
-                title="Compute (CPU + RAM) + persistent disks. Excludes network egress, Cloud Storage, and other services."
-              >
-                Est. cost<span className={styles.indicator}>{indicator('estimated_monthly_cost')}</span>
-                <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>*</span>
-              </button>
-            )}
-            <span>IPs / Domains</span>
+      {/* Grouped instance list */}
+      {filtered.length > 0 && (
+        <>
+          <div className={styles.colHeaders}>
+            <span className={styles.thBtn}>Name</span>
+            <span className={styles.thBtn}>Status</span>
+            <span className={styles.thBtn}>Type</span>
+            <span className={styles.thBtn}>Region</span>
+            <span className={styles.thBtn}>Uptime</span>
+            {!isViewer && <span className={styles.thBtn}>Est. cost</span>}
           </div>
-          {sorted.map((inst) => (
-            <div key={inst.id} className={`${styles.row} ${isLongRunning(inst) ? styles.rowWarning : ''}`}>
-              <div>
-                <button
-                  className={styles.instNameBtn}
-                  onClick={() => setSelectedInstanceId(inst.id)}
-                >
-                  {inst.name}
-                </button>
-                <div className={styles.instId}>
-                  {inst.project_name ?? inst.connection_name}
+
+          {groups.map(group => {
+            const collapsed = collapsedGroups.has(group.id);
+            const expanded = expandedGroups.has(group.id);
+            const visible = expanded ? group.items : group.items.slice(0, INITIAL_VISIBLE);
+            const hiddenCount = group.items.length - INITIAL_VISIBLE;
+
+            return (
+              <div key={group.id} className={styles.group}>
+                <div className={styles.groupHeader} onClick={() => toggleGroup(group.id)} role="button" tabIndex={0} aria-expanded={!collapsed}>
+                  <span className={styles.groupIcon}>{group.icon}</span>
+                  <span className={styles.groupLabel}>{group.label}</span>
+                  <span className={styles.groupCount}>{group.items.length}</span>
+                  <span className={styles.groupToggle}>
+                    {collapsed ? '▶' : '▼'}
+                  </span>
                 </div>
-              </div>
-              <div>
-                <span className={styles.provider}>{inst.provider.toUpperCase()}</span>
-                {inst.resource_type && inst.resource_type !== 'compute' && (
-                  <div className={styles.resourceTypeBadge}>{inst.resource_type}</div>
-                )}
-              </div>
-              <span>
-                <span className={`badge ${statusClass(inst.status)}`}>
-                  {inst.status}
-                </span>
-              </span>
-              <span className={styles.muted}>{inst.instance_type ?? '—'}</span>
-              <div className={styles.regionCell}>
-                <div>{inst.region}</div>
-                {inst.zone && <div className={styles.instId}>{inst.zone}</div>}
-              </div>
-              <div>
-                <span className={styles.muted}>{fmtUptime(inst.uptime_hours)}</span>
-                {isLongRunning(inst) && (
-                  <span className={styles.longRunningBadge}>long-running</span>
-                )}
-              </div>
-              {isViewer ? <div /> : (
-                <div>
-                  <div>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</div>
-                  {inst.status === 'RUNNING'
-                    ? <div className={styles.instId}>{fmt(inst.estimated_hourly_cost, displayCurrency)}</div>
-                    : inst.estimated_monthly_cost && parseFloat(inst.estimated_monthly_cost) > 0
-                      ? <div className={styles.instId} style={{ color: 'var(--muted)' }}>disk only</div>
-                      : null
-                  }
-                  {inst.status === 'RUNNING' && (
-                    <div className={styles.costToDate}>
-                      {currencySymbol(displayCurrency)}{calcCostToDate(inst).toFixed(2)} this mo
+                <hr className={styles.groupDivider} />
+                {!collapsed && visible.map(inst => (
+                  <div
+                    key={inst.id}
+                    className={styles.row}
+                    onClick={() => setSelectedInstanceId(inst.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedInstanceId(inst.id); }}
+                  >
+                    <div className={styles.rowName}>
+                      <span className={styles.rowNamePrimary}>{inst.name}</span>
+                      <span className={styles.rowNameSecondary}>
+                        {inst.provider.toUpperCase()} · {inst.project_name ?? inst.connection_name}
+                      </span>
                     </div>
-                  )}
-                </div>
-              )}
-              <div className={styles.ipCell}>
-                {inst.public_ip && <div>{inst.public_ip}</div>}
-                {inst.private_ip && <div className={styles.instId}>{inst.private_ip}</div>}
-                {!inst.public_ip && !inst.private_ip && <span className={styles.muted}>—</span>}
-                {inst.domains && inst.domains.length > 0 && (
-                  <div className={styles.domains}>
-                    {inst.domains.map((d) => {
-                      const isProxied = d.endsWith(' (proxied)');
-                      const hostname = isProxied ? d.slice(0, -' (proxied)'.length) : d;
-                      return (
-                        <a
-                          key={d}
-                          href={`https://${hostname}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={styles.domainTag}
-                          title={isProxied ? 'Cloudflare-proxied (IP is edge, not instance)' : hostname}
-                        >
-                          {hostname}
-                          {isProxied && <span className={styles.proxiedDot} title="Cloudflare proxied">⬡</span>}
-                        </a>
-                      );
-                    })}
+                    <div className={styles.statusPill}>
+                      <span className={`${styles.statusDot} ${statusDotClass(inst.status)}`} />
+                      <span>{statusLabel(inst.status)}</span>
+                    </div>
+                    <div>
+                      <span className={styles.typeBadge}>{inst.resource_type === 'compute' ? inst.instance_type ?? '—' : inst.resource_type}</span>
+                    </div>
+                    <div className={styles.regionCell}>
+                      <div className={styles.regionPrimary}>{inst.region}</div>
+                      {inst.zone && <div className={styles.regionSecondary}>{inst.zone}</div>}
+                    </div>
+                    <div className={styles.uptimeCell}>
+                      <span className={styles.uptimeValue}>{fmtUptime(inst.uptime_hours)}</span>
+                      <div className={styles.uptimeBar}>
+                        <div
+                          className={styles.uptimeBarFill}
+                          style={{ width: `${Math.min(100, (uptimeDays(inst.uptime_hours) / 365) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    {!isViewer && (
+                      <div className={styles.costCell}>
+                        <span className={styles.costPrimary}>{fmtMonthly(inst.estimated_monthly_cost, displayCurrency)}</span>
+                        {inst.status.toUpperCase() === 'RUNNING' && (
+                          <span className={styles.costSecondary}>{fmtHourly(inst.estimated_hourly_cost, displayCurrency)}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
+                ))}
+                {!collapsed && !expanded && hiddenCount > 0 && (
+                  <button className={styles.showMore} onClick={() => expandGroup(group.id)}>
+                    Show {hiddenCount} more…
+                  </button>
                 )}
               </div>
-            </div>
-          ))}
-        </div>
-        </div>
-      )}
-      {sorted.length > 0 && (
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
-          * Running instances: compute (CPU + RAM) + persistent disk. Stopped/terminated instances: disk storage only (compute = $0). Network egress and managed services excluded.
-        </p>
+            );
+          })}
+        </>
       )}
 
       {selectedInstanceId && (
-        <InstanceDrawer
-          instanceId={selectedInstanceId}
-          onClose={() => setSelectedInstanceId(null)}
-        />
+        <InstanceDrawer instanceId={selectedInstanceId} onClose={() => setSelectedInstanceId(null)} />
       )}
     </div>
   );
@@ -348,7 +408,7 @@ function InstancesPageInner() {
 
 export default function InstancesPage() {
   return (
-    <Suspense fallback={<p style={{ color: 'var(--muted)', padding: '20px' }}>Loading…</p>}>
+    <Suspense fallback={<p style={{ color: 'var(--muted)', padding: '1.25rem' }}>Loading…</p>}>
       <InstancesPageInner />
     </Suspense>
   );

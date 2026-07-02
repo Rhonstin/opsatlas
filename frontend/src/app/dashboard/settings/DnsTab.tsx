@@ -132,13 +132,13 @@ export default function DnsTab() {
               <span><span className={`badge ${DNS_STATUS_BADGE[conn.status] ?? 'badge-pending'}`}>{conn.status}</span></span>
               <span className={dnsStyles.muted}>{conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}</span>
               <span className={dnsStyles.actions}>
-                <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleTest(conn.id)}>
+                <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleTest(conn.id)}>
                   {testResults[conn.id] ?? 'Test'}
                 </button>
-                <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
+                <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }} onClick={() => handleSync(conn.id)} disabled={syncing[conn.id]}>
                   {syncing[conn.id] ? 'Syncing…' : 'Sync'}
                 </button>
-                <button className="btn-danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => handleDelete(conn.id)}>Delete</button>
+                <button className="btn-ghost" style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', color: 'var(--color-danger)' }} onClick={() => handleDelete(conn.id)}>Delete</button>
               </span>
             </div>
           ))}

@@ -133,7 +133,7 @@ function BillingContent() {
             <option key={p} value={p}>{fmtPeriod(p)}{p === period ? ' (current)' : ''}</option>
           ))}
         </select>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--muted)' }}>
           {actuals.length > 0 ? `${actuals.length} line items · last fetched ${new Date(actuals[0].fetched_at).toLocaleString()}` : ''}
         </span>
       </div>
@@ -168,14 +168,14 @@ function BillingContent() {
               <span><strong>{r.connection_name}</strong> ({r.provider.toUpperCase()})</span>
               {r.status === 'ok' && <span className={styles.resultMsg}>{r.rows_upserted} line items imported</span>}
               {r.status === 'skipped' && <span className={styles.resultMsg}>skipped — {r.message}</span>}
-              {r.status === 'error' && <span style={{ color: 'var(--error, #ef4444)', fontSize: 12 }}>{r.message}</span>}
+              {r.status === 'error' && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{r.message}</span>}
             </div>
           ))}
         </div>
       )}
 
       {loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)', fontSize: 13 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.8125rem' }}>{error}</p>}
 
       {/* Hetzner — no actuals yet */}
       {!loading && providerTab === 'hetzner' && filteredActuals.length === 0 && (
@@ -221,7 +221,15 @@ function BillingContent() {
                   {topServices.map(([service, amount]) => (
                     <div key={service} className={styles.serviceRow}>
                       <div className={styles.serviceInfo}>
-                        <div className={styles.serviceName}>{service}</div>
+                        <div className={styles.serviceName}>
+                          {service === 'Unknown' ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                              <span style={{ color: 'var(--color-warning)' }}>⚠</span>
+                              <span>Unknown</span>
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--color-muted)' }}>— uncategorized</span>
+                            </span>
+                          ) : service}
+                        </div>
                         <div className={styles.bar} style={{ width: `${(amount / maxService) * 100}%` }} />
                       </div>
                       <div className={styles.amount}>{fmtUsd(amount)}</div>

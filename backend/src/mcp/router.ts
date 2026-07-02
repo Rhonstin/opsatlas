@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -16,13 +16,15 @@ const transports = new Map<string, StreamableHTTPServerTransport>();
 async function authenticateRequest(req: Request): Promise<string | null> {
   const apiKey = req.headers['x-api-key'] as string | undefined;
   if (apiKey) {
-    const row = await db('api_keys')
-      .where({ key_hash: apiKey })
-      .select('user_id')
-      .first();
-    if (row) {
-      await db('api_keys').where({ key_hash: apiKey }).update({ last_used_at: new Date() });
-      return row.user_id;
+    const inputHash = createHash('sha256').update(apiKey).digest('hex');
+    const rows = await db('api_keys').select('id', 'user_id', 'key_hash');
+    for (const row of rows) {
+      const storedHashBuf = Buffer.from(row.key_hash, 'hex');
+      const inputHashBuf = Buffer.from(inputHash, 'hex');
+      if (storedHashBuf.length === inputHashBuf.length && timingSafeEqual(storedHashBuf, inputHashBuf)) {
+        await db('api_keys').where({ id: row.id }).update({ last_used_at: new Date() });
+        return row.user_id;
+      }
     }
   }
 

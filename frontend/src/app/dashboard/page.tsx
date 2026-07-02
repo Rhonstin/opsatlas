@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <div className={styles.cardNote}>
             {running} running
             {activeProviders.length > 0 && (
-              <span style={{ marginLeft: 8, color: 'var(--muted)' }}>
+              <span style={{ marginLeft: '0.5rem', color: 'var(--muted)' }}>
                 · {activeProviders.map((p) => `${p.toUpperCase()} ${providerStats[p].instances}`).join(' · ')}
               </span>
             )}
@@ -141,7 +141,19 @@ export default function DashboardPage() {
             </div>
             <div className={styles.cardNote}>
               {hasActuals
-                ? `${fmtUsd(estMonthly)}/mo est. · ${actualTotal > 0 ? ((actualTotal / estMonthly) * 100).toFixed(0) : '—'}% of est.`
+                ? (() => {
+                    const pct = actualTotal > 0 && estMonthly > 0 ? (actualTotal / estMonthly) * 100 : null;
+                    return (
+                      <>
+                        {fmtUsd(estMonthly)}/mo est. ·{' '}
+                        {pct !== null ? (
+                          <span style={{ color: pct > 100 ? 'var(--color-danger)' : undefined, fontWeight: pct > 100 ? 600 : undefined }}>
+                            {pct > 100 ? '↑' : ''}{pct.toFixed(0)}% of est.{pct > 100 ? ' — over budget' : ''}
+                          </span>
+                        ) : '—% of est.'}
+                      </>
+                    );
+                  })()
                 : `${fmtMonthly(estMonthly)} projected`}
             </div>
           </div>
@@ -160,7 +172,7 @@ export default function DashboardPage() {
 
       {/* ── Row 2: health signals (admin only for cost-related) ── */}
       {!isViewer && (longRunning > 0 || idleCandidates > 0 || domainsMapped > 0) && (
-        <div className={styles.cards} style={{ marginTop: 16 }}>
+        <div className={styles.cards} style={{ marginTop: '1rem' }}>
           {longRunning > 0 && (
             <div className="card">
               <div className={styles.cardTitle}>Long-running</div>

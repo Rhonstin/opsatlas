@@ -1,49 +1,49 @@
 .discoverRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   justify-content: space-between;
 }
-.hint { color: var(--muted); font-size: 13px; }
+.hint { color: var(--muted); font-size: 0.8125rem; }
 
 .list {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sp-2);
   overflow-y: auto;
-  max-height: 260px;
+  max-height: 16.25rem;
 }
 
 .item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--sp-3);
+  padding: 0.625rem 0.875rem;
+  border-bottom: 0.0625rem solid var(--border);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background var(--duration-fast);
 }
 .item:last-child { border-bottom: none; }
 .item:hover { background: var(--bg); }
 
 .item input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
+  width: 0.9375rem;
+  height: 0.9375rem;
   flex-shrink: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
 
-.itemInfo { display: flex; flex-direction: column; gap: 2px; }
-.itemName { font-size: 13px; font-weight: 500; }
-.itemId { font-size: 11px; color: var(--muted); font-family: monospace; }
+.itemInfo { display: flex; flex-direction: column; gap: 0.125rem; }
+.itemName { font-size: 0.8125rem; font-weight: 500; }
+.itemId { font-size: 0.6875rem; color: var(--muted); font-family: monospace; }
 
-.manualRow { display: flex; gap: 8px; align-items: center; }
+.manualRow { display: flex; gap: var(--sp-2); align-items: center; }
 .manualRow input { flex: 1; }
 
 .footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 4px;
+  padding-top: var(--sp-1);
 }
-.count { font-size: 13px; color: var(--muted); }
+.count { font-size: 0.8125rem; color: var(--muted); }

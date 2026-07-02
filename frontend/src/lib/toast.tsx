@@ -34,8 +34,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {list.length > 0 && (
         <div style={{
-          position: 'fixed', bottom: 24, right: 24,
-          display: 'flex', flexDirection: 'column', gap: 8,
+          position: 'fixed', bottom: '1.5rem', right: '1.5rem',
+          display: 'flex', flexDirection: 'column', gap: '0.5rem',
           zIndex: 9999,
         }}>
           {list.map((t) => (
@@ -43,15 +43,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               key={t.id}
               onClick={() => dismiss(t.id)}
               style={{
-                padding: '10px 16px',
-                borderRadius: 8,
+                padding: '0.625rem 1rem',
+                borderRadius: '0.5rem',
                 background: BG[t.type],
-                color: '#fff',
-                fontSize: 13,
+                color: 'var(--color-accent-text)',
+                fontSize: '0.8125rem',
                 fontWeight: 500,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                boxShadow: '0 0.25rem 1.25rem rgba(0,0,0,0.4)',
                 cursor: 'pointer',
-                maxWidth: 320,
+                maxWidth: '20rem',
                 lineHeight: 1.5,
                 animation: 'toastIn 0.15s ease',
               }}

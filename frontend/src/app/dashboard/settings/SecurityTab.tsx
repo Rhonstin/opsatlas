@@ -88,7 +88,7 @@ export default function SecurityTab() {
       </div>
 
       <div className={styles.card}>
-        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.375rem' }}>
           Two-factor authentication
           {mfaEnabled !== null && (
             <span className={`badge ${mfaEnabled ? 'badge-active' : 'badge-pending'}`}>
@@ -101,13 +101,13 @@ export default function SecurityTab() {
         </div>
 
         {step === 'idle' && mfaEnabled !== null && (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: '1rem' }}>
             {mfaEnabled ? (
-              <button className="btn-danger" style={{ fontSize: 13 }} onClick={() => { setStep('disabling'); setCode(''); setCodeError(''); }}>
+              <button className="btn-danger" style={{ fontSize: '0.8125rem' }} onClick={() => { setStep('disabling'); setCode(''); setCodeError(''); }}>
                 Disable MFA
               </button>
             ) : (
-              <button className="btn-primary" style={{ fontSize: 13 }} onClick={handleSetup} disabled={working}>
+              <button className="btn-primary" style={{ fontSize: '0.8125rem' }} onClick={handleSetup} disabled={working}>
                 {working ? 'Setting up…' : 'Set up MFA'}
               </button>
             )}
@@ -115,22 +115,22 @@ export default function SecurityTab() {
         )}
 
         {step === 'setup' && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+          <div style={{ marginTop: '1.25rem' }}>
+            <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--muted)' }}>
               Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.
             </div>
             {qrDataUrl && (
-              <div style={{ marginBottom: 16, display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <img src={qrDataUrl} alt="TOTP QR code" style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Or enter the key manually:</div>
-                  <code style={{ fontSize: 13, letterSpacing: '0.1em', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Or enter the key manually:</div>
+                  <code style={{ fontSize: '0.8125rem', letterSpacing: '0.1em', padding: '0.375rem 0.625rem', background: 'var(--surface)', borderRadius: 6, userSelect: 'all', wordBreak: 'break-all', maxWidth: 280 }}>
                     {secret}
                   </code>
                 </div>
               </div>
             )}
-            <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+            <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 280 }}>
               <div className={styles.ssoField}>
                 <label className={styles.ssoFieldLabel}>Authenticator code</label>
                 <input
@@ -142,12 +142,12 @@ export default function SecurityTab() {
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000"
                   autoFocus
-                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: '1.25rem' }}
                   autoComplete="one-time-code"
                 />
               </div>
               {codeError && <div className={styles.error}>{codeError}</div>}
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button type="button" className="btn-ghost" onClick={cancelSetup}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={working || code.length !== 6}>
                   {working ? 'Verifying…' : 'Enable MFA'}
@@ -158,11 +158,11 @@ export default function SecurityTab() {
         )}
 
         {step === 'disabling' && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--muted)' }}>
+          <div style={{ marginTop: '1.25rem' }}>
+            <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--muted)' }}>
               Enter your current authenticator code to disable MFA.
             </div>
-            <form onSubmit={handleDisable} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 280 }}>
+            <form onSubmit={handleDisable} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 280 }}>
               <div className={styles.ssoField}>
                 <label className={styles.ssoFieldLabel}>Authenticator code</label>
                 <input
@@ -174,12 +174,12 @@ export default function SecurityTab() {
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000"
                   autoFocus
-                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }}
+                  style={{ letterSpacing: '0.2em', textAlign: 'center', fontSize: '1.25rem' }}
                   autoComplete="one-time-code"
                 />
               </div>
               {codeError && <div className={styles.error}>{codeError}</div>}
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button type="button" className="btn-ghost" onClick={() => { setStep('idle'); setCode(''); setCodeError(''); }}>Cancel</button>
                 <button type="submit" className="btn-danger" disabled={working || code.length !== 6}>
                   {working ? 'Disabling…' : 'Disable MFA'}

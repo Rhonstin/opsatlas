@@ -45,7 +45,7 @@ export default function DnsRecordsPage() {
       </div>
 
       {loading && <p className={styles.empty}>Loading…</p>}
-      {error && <p style={{ color: 'var(--error, #ef4444)' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {!loading && records.length === 0 && (
         <p className={styles.empty}>No DNS records found. Sync a DNS connection first.</p>
@@ -90,10 +90,21 @@ export default function DnsRecordsPage() {
                 {zoneRecords.map((rec) => (
                   <div key={rec.id} className={styles.row}>
                     <span className={styles.recordName} title={rec.name}>{rec.name}</span>
-                    <span className={styles.typeBadge}>{rec.type}</span>
+                    <span className={styles.typeBadge} style={{
+                      background: rec.type === 'A' || rec.type === 'AAAA'
+                        ? 'color-mix(in srgb, var(--color-success) 15%, transparent)'
+                        : rec.type === 'CNAME'
+                          ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)'
+                          : 'color-mix(in srgb, var(--color-muted) 15%, transparent)',
+                      color: rec.type === 'A' || rec.type === 'AAAA'
+                        ? 'var(--color-success)'
+                        : rec.type === 'CNAME'
+                          ? 'var(--color-accent)'
+                          : 'var(--color-muted)',
+                    }}>{rec.type}</span>
                     <span className={styles.value} title={rec.value}>{rec.value}</span>
                     <span className={styles.ttl}>{rec.ttl ?? '—'}</span>
-                    <span>{rec.proxied ? <span className={styles.proxied}>Yes</span> : <span className={styles.noInstance}>No</span>}</span>
+                    <span>{rec.proxied ? <span className={styles.proxied} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--color-accent)' }}>⬡ Yes</span> : <span className={styles.noInstance}>No</span>}</span>
                     <span>
                       {rec.matched_instance_name && rec.matched_instance_id ? (
                         <button

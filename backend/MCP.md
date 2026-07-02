@@ -14,8 +14,49 @@ Streamable HTTP transport — the same Express server that serves the REST API.
 
 The MCP endpoint accepts either:
 
-1. **JWT token** — same as the web UI (cookie `opsatlas_token` or `Authorization: Bearer <token>`)
-2. **API key** — via `X-API-Key` header (coming soon)
+1. **API key** (recommended) — via `X-API-Key` header
+2. **JWT token** — same as the web UI (cookie `opsatlas_token` or `Authorization: Bearer <token>`)
+
+### API Keys
+
+API keys are the recommended way to authenticate MCP clients. They are managed via the REST API (admin only).
+
+**Create a key:**
+```bash
+curl -X POST http://localhost:4000/auth/api-keys \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Claude Desktop"}'
+```
+
+Response (save the `key` — it is shown only once):
+```json
+{
+  "id": "uuid",
+  "name": "Claude Desktop",
+  "key_prefix": "oa_a3f...",
+  "key": "oa_a3f9b2c1e4d8...full-key",
+  "created_at": "2026-06-15T..."
+}
+```
+
+**List keys:**
+```bash
+curl http://localhost:4000/auth/api-keys \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+**Delete a key:**
+```bash
+curl -X DELETE http://localhost:4000/auth/api-keys/<key-id> \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+Security notes:
+- Keys are hashed with SHA-256 before storage — the raw key is never persisted
+- The raw key is returned only once on creation
+- Key prefixes (`oa_...`) are stored for identification in the UI
+- Deleted keys are immediately invalidated
 
 ## Available Tools
 
@@ -62,7 +103,7 @@ Add to `claude_desktop_config.json`:
     "opsatlas": {
       "url": "http://localhost:4000/mcp",
       "headers": {
-        "Authorization": "Bearer <your-jwt-token>"
+        "X-API-Key": "oa_your-api-key-here"
       }
     }
   }
@@ -79,7 +120,7 @@ Add to `.cursor/mcp.json`:
     "opsatlas": {
       "url": "http://localhost:4000/mcp",
       "headers": {
-        "Authorization": "Bearer <your-jwt-token>"
+        "X-API-Key": "oa_your-api-key-here"
       }
     }
   }

@@ -132,7 +132,7 @@ export default function LoginPage() {
                 required
                 autoFocus
                 autoComplete="one-time-code"
-                style={{ letterSpacing: '0.2em', fontSize: 22, textAlign: 'center' }}
+                style={{ letterSpacing: '0.2em', fontSize: '1.375rem', textAlign: 'center' }}
               />
             </div>
             {error && <p className="error-msg">{error}</p>}
@@ -141,7 +141,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13 }}
+              style={{ width: '100%', marginTop: '0.5rem', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.8125rem' }}
               onClick={() => { setMfaToken(null); setError(''); }}
             >
               Back to sign in

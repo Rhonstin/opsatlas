@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { isLoggedIn, getUser, clearAuth, AuthUser } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { ToastProvider } from '@/lib/toast';
+import ThemeToggle from '@/components/ThemeToggle';
 import styles from './layout.module.css';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider>
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <div className={styles.shell}>
         <nav className={styles.nav}>
           <Link href="/dashboard" className={styles.navLogo}>
@@ -89,18 +91,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
           <div className={styles.navRight}>
+            <ThemeToggle />
             {isViewer && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--color-muted)', background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', border: '0.0625rem solid color-mix(in srgb, var(--color-text) 12%, transparent)', borderRadius: '0.25rem', padding: '0.125rem 0.4375rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Viewer
               </span>
             )}
             <span className={styles.userEmail}>{user?.email}</span>
-            <button className="btn-ghost" onClick={logout} style={{ padding: '5px 12px' }}>
+            <button className="btn-ghost" onClick={logout} style={{ padding: '0.3125rem 0.75rem' }}>
               Sign out
             </button>
           </div>
         </nav>
-        <main className={styles.main}>{children}</main>
+        <main className={styles.main} id="main-content">{children}</main>
       </div>
     </ToastProvider>
   );
